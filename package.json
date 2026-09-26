@@ -9,7 +9,8 @@
   "scripts": {
     "dev:api": "node --watch apps/api/src/index.js",
     "dev:web": "npm run dev --workspace=apps/web",
-    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\""
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\"",
+    "backup": "bash scripts/backup.sh"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"
