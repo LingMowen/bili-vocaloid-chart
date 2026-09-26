@@ -1,0 +1,9 @@
+{
+  "title": "Data-chan",
+  "desc": "An AI Q&A assistant based on chart data (demo UI, dialog engine not yet connected).",
+  "emptyHint": "Ask something, e.g. \"Luo Tianyi's hottest song lately\" or \"this week's new songs\"",
+  "aiReply": "Data-chan is not yet connected to a dialog backend. Once deployed, it can answer questions like which song is the hottest for a vocalist, this week's new-song rundown, or a P-main's output statistics.",
+  "inputPlaceholderUser": "Hi {{name}}, ask Data-chan something…",
+  "inputPlaceholder": "Ask Data-chan something…",
+  "send": "Send"
+}

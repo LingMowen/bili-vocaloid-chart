@@ -1,0 +1,9 @@
+{
+  "title": "歌曲标签",
+  "desc": "聚合当前榜单内视频的标签与识别的歌姬",
+  "tagCloud": "标签云",
+  "girls": "歌姬",
+  "songsWithTag": "标签「{{name}}」的歌曲",
+  "songCount": "{{n}} 首",
+  "noneFound": "当前榜内未找到该标签的歌曲"
+}

@@ -1,0 +1,9 @@
+{
+  "title": "Song tags",
+  "desc": "Tags from the current board's videos and the singers they are identified with",
+  "tagCloud": "Tag cloud",
+  "girls": "Singers",
+  "songsWithTag": "Songs with tag “{{name}}”",
+  "songCount": "{{n}} songs",
+  "noneFound": "No songs with this tag found in the current board"
+}

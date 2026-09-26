@@ -1,0 +1,141 @@
+{
+  "siteName": "Vocabili DB",
+  "slogan": "Chinese virtual singer ranking · archive & statistics platform",
+  "links": [
+    { "name": "Bilibili", "url": "https://www.bilibili.com" },
+    { "name": "VocaDB", "url": "https://vocadb.net" }
+  ],
+  "aboutTitle": "About the project",
+  "aboutBody": [
+    "An open-source implementation of the Chinese Virtual Singer Ranking, modeled on vocabili.top, continuously collecting and aggregating Chinese virtual-singer songs from Bilibili's VOCALOID·UTAU partition.",
+    "Boards are published on daily, weekly, monthly and annual cycles, all bounded at 01:00 on the start day. Scores use an increment-based baseline and the official formula with corrections A/B/C/D.",
+    "All data comes from public Bilibili endpoints and is for study and archival purposes only; copyright belongs to the original authors and the platform. Contributions are welcome."
+  ],
+  "featuresTitle": "Platform features",
+  "features": [
+    { "name": "Rankings", "desc": "Daily, weekly, monthly and annual boards ranked by the official scoring formula.", "to": "/rank/weekly" },
+    { "name": "Aggregated stats", "desc": "All tracks in one place, sortable by any metric with advanced filters.", "to": "/stats" },
+    { "name": "Song detail", "desc": "Song metadata, live stats panel and a link to the original video." },
+    { "name": "Data charts", "desc": "Historical board performance, growth trends and rank statistics." },
+    { "name": "Search", "desc": "Global search by title, producer, vocalist or synthesizer.", "to": "/search" },
+    { "name": "Score calculator", "desc": "Enter a video's metrics to estimate its score online.", "to": "/calculator" },
+    { "name": "Achievements", "desc": "Permanent achievements: SUPERHIT, Monban, Myth, Annual #1.", "to": "/achievements" },
+    { "name": "Vocalists", "desc": "Songs, synthesizers and frequent producers grouped by vocalist.", "to": "/singers" },
+    { "name": "Daily digest", "desc": "New entries and daily increments at a glance.", "to": "/today" },
+    { "name": "Interaction board", "desc": "Ranking by comments, danmaku and other interaction metrics.", "to": "/interaction" },
+    { "name": "Tags", "desc": "Browse collected songs by tag.", "to": "/tags" },
+    { "name": "AI review", "desc": "LLM-based vocalist detection and song commentary.", "to": "/ai" }
+  ],
+  "rulesTitle": "Collection rules",
+  "rules": [
+    {
+      "name": "Scope",
+      "items": [
+        "Only songs whose title or description names both the synthesizer and the virtual singer.",
+        "Only videos whose actual musical content is at least 120 seconds long.",
+        "Songs whose audio or lyrics are produced by generative models are excluded.",
+        "Only publicly viewable, non-replaced videos (charged, hidden or heavily replaced videos are excluded).",
+        "Virtual-singer videos outside the VOCALOID·UTAU partition are only backfilled from the original-music partition when traceable."
+      ]
+    },
+    {
+      "name": "Virtual singer definition",
+      "items": [
+        "Works without singing-synthesis technology are excluded; voice-changing / voice-mixing is treated as a human voice.",
+        "No prominent human vocal may take the lead role.",
+        "The voicebank must clearly represent a non-human character, with no homogeneous tie to a real person's public persona.",
+        "An official voicebank enters scope after its first demo song; fan-made voicebanks enter scope after public distribution.",
+        "Iterations, engine changes or visual redesigns count as the same virtual singer series.",
+        "Voicebanks that are unavailable publicly or under IP dispute are generally excluded."
+      ]
+    },
+    {
+      "name": "Exclusions",
+      "items": [
+        "Not a complete song: medleys, a cappella, clearly untuned, meaningless lyrics, heavy distortion or clipping.",
+        "Missing credits: no work or author information in the text area, reposts without source or author.",
+        "Controversial content: heavily reused parameters, generative-model participation, disputed voicebanks.",
+        "Off-topic elements: personal attacks, political or historical commentary, altered lyrics.",
+        "Direct translations of foreign songs, non-clean audio from offline debuts, ads as the main content."
+      ]
+    },
+    {
+      "name": "Repeat submissions",
+      "items": [
+        "Only one entry per annual settlement cycle.",
+        "A remade version may be collected again after the original has been collected for a full annual cycle.",
+        "Videos with the same production staff are treated as being by the same author.",
+        "Mark planned full versions, PV versions or reworks as [not final] on upload."
+      ]
+    },
+    {
+      "name": "Grey-release additions",
+      "items": [
+        "Tags must include one of: VOCALOID, Synthesizer V, ACE Studio, UTAU, DiffSinger, X Studio, DeepVocal, SharpKey, VoiSona; or the Chinese virtual singer song tag; or a top-10 vocalist from the latest weekly board.",
+        "The submission must be posted in the Music partition."
+      ]
+    }
+  ],
+  "formulaTitle": "Scoring formula",
+  "formulaDesc": "All collected submissions in range are scored as follows and ranked from highest to lowest.",
+  "formula": [
+    {
+      "name": "Base formula",
+      "items": ["Final score = view score + interaction score + favorite score + coin score + like score"]
+    },
+    {
+      "name": "Component scores",
+      "items": [
+        "View score = base view score × correction D. If views > 10000, base = views × 0.5 + 5000; otherwise base = views.",
+        "Interaction score = (comments + danmaku) × correction A × 15.",
+        "Favorite score = favorites × correction B.",
+        "Coin score = coins × correction C.",
+        "Like score: if likes > coins × 2, use coins × 2; otherwise use likes."
+      ]
+    },
+    {
+      "name": "Corrections",
+      "items": [
+        "Correction A (no cap) = ((base view score + favorites) ÷ (base view score + favorites + (danmaku + comments) × 20))².",
+        "Correction B (max 50): if favorites > coins × 2, (coins² ÷ (views × favorites)) × 1000; otherwise (favorites ÷ views) × 250.",
+        "Correction C (max 50): if coins > favorites, (favorites² ÷ (views × coins)) × 250; otherwise (coins ÷ views) × 250.",
+        "Correction D (max 1): if favorites > coins, (coins ÷ views) × 25; otherwise (favorites ÷ views) × 25."
+      ]
+    },
+    {
+      "name": "Other notes",
+      "items": [
+        "Only on-platform data is counted.",
+        "Corrections keep two decimal places.",
+        "Boards are increment-based: the daily snapshot from the day before the period starts is the baseline.",
+        "Daily, weekly, monthly and annual cycles are all bounded at 01:00 on the start day."
+      ]
+    }
+  ],
+  "achievementsTitle": "Achievements",
+  "achievements": [
+    {
+      "name": "Permanent achievements",
+      "items": [
+        { "name": "SUPERHIT (SH)", "desc": "Reach: top 3 on the main board twice in total", "color": "#6A0DAD" },
+        { "name": "Annual #1", "desc": "Reach: become the annual board's #1 for the first time", "color": "#CCA300" },
+        { "name": "Monban", "desc": "Reach: on the main board 20 of 28 issues, or 30 of 50, without 8 consecutive misses", "color": "#127436" },
+        { "name": "Myth", "desc": "Reach: total views exceed ten million", "color": "#23AFA4" }
+      ]
+    },
+    {
+      "name": "Judging notes",
+      "items": [
+        { "name": "Permanent display", "desc": "Once earned, the badge shows on every later issue." },
+        { "name": "Full history", "desc": "Judged against the complete board history, not just the current year." },
+        { "name": "Increment based", "desc": "Ranks and achievements use the net increment inside the period, not cumulative values." }
+      ]
+    }
+  ],
+  "friendsTitle": "Links",
+  "friends": [
+    { "name": "VocaDB", "url": "https://vocadb.net" },
+    { "name": "Moegirlpedia · Chinese VOCALOID", "url": "https://zh.moegirl.org.cn/中文VOCALOID" },
+    { "name": "Bilibili", "url": "https://www.bilibili.com" }
+  ]
+}

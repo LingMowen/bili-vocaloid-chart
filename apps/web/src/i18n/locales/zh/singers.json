@@ -1,0 +1,19 @@
+{
+  "title": "歌手",
+  "desc": "基于本期榜单识别的歌姬实体，共 {{n}} 位",
+  "tabView": "播放",
+  "tabFavorite": "收藏",
+  "tabCount": "歌数",
+  "songLine": "{{n}} 首 · 播放 {{view}} · 收藏 {{favorite}}",
+  "partners": "常合作：",
+  "pt": "pt",
+  "loading": "加载中…",
+  "pending": "榜单数据采集中，请稍后再试",
+  "badFormat": "数据格式异常",
+  "tabSinger": "歌手",
+  "tabProducer": "P主",
+  "tabEngine": "引擎",
+  "tabUploader": "UP主",
+  "tabPending": "数据未收录，敬请期待",
+  "noPicture": "暂无头像"
+}

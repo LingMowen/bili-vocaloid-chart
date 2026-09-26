@@ -1,0 +1,10 @@
+{
+  "title": "分数计算器",
+  "desc": "综合分 = Σ（各项指标 × 权重）。拖动滑杆调整权重，即时预览榜内 Top10 变化",
+  "weightsTitle": "指标权重",
+  "reset": "重置",
+  "resetTitle": "恢复默认 {{n}}",
+  "resetAll": "全部重置为默认",
+  "previewTitle": "按当前权重计算 Top10",
+  "metricCoin": "投币"
+}

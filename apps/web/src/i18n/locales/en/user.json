@@ -1,0 +1,20 @@
+{
+  "loading": "Loading…",
+  "notFound": "No collected works from this uploader",
+  "back": "Back to search",
+  "scopeDesc": "Only data from works already collected on this site is shown here.",
+  "songsTitle": "Collected works ({{n}})",
+  "sumSong": "Collected works",
+  "sumView": "Total views",
+  "sumFavorite": "Total favorites",
+  "sumCoin": "Total coins",
+  "sumLike": "Total likes",
+  "pt": " pts",
+  "noSongs": "No collected works",
+  "coopTitle": "Collaborators",
+  "noCoop": "No collaborators",
+  "coopVideos": "Collaboration videos ({{n}})",
+  "coopRole": "Participated as \"{{role}}\"",
+  "coopBy": "by",
+  "noCoopVideos": "No collaboration videos"
+}

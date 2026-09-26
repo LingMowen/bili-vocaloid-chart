@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>采集进度 · 本地</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E🎵%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #fafaf9;
+      --card: #ffffff;
+      --border: #e7e5e4;
+      --text: #1c1917;
+      --muted: #78716c;
+      --primary: #0f766e;
+      --primary-soft: #ccfbf1;
+      --warn: #b45309;
+      --danger: #b91c1c;
+      --success: #15803d;
+      --log-bg: #f5f5f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 18px; font-weight: 700; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #d6d3d1; margin-right: 6px; vertical-align: middle; }
+    .status-dot.live { background: var(--success); box-shadow: 0 0 0 4px rgba(21,128,61,0.15); animation: pulse 1.6s infinite; }
+    .status-dot.idle { background: #a8a29e; }
+    .status-dot.err { background: var(--danger); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 12px; }
+    .card h2 { margin: 0 0 12px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      transition: background .15s, border-color .15s;
+    }
+    button:hover:not(:disabled) { background: var(--log-bg); border-color: var(--primary); }
+    button.primary { background: var(--primary); color: white; border-color: var(--primary); }
+    button.primary:hover:not(:disabled) { background: #115e59; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .tabs button { border: none; border-radius: 0; border-right: 1px solid var(--border); }
+    .tabs button:last-child { border-right: none; }
+    .tabs button.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+    .stat { padding: 12px 14px; border-radius: 10px; background: var(--log-bg); }
+    .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+    .stat .value.value-md { font-size: 16px; }
+    .stat .value.success { color: var(--success); }
+    .stat .value.danger { color: var(--danger); }
+
+    .stage { margin-bottom: 10px; }
+    .stage:last-child { margin-bottom: 0; }
+    .stage-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+    .stage-label { color: var(--text); font-weight: 500; }
+    .stage-meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .bar { height: 6px; background: var(--log-bg); border-radius: 3px; overflow: hidden; }
+    .bar > div { height: 100%; background: var(--primary); transition: width 0.3s; border-radius: 3px; }
+    .bar.done > div { background: var(--success); }
+
+    .log { background: var(--log-bg); border-radius: 8px; padding: 8px; max-height: 360px; overflow-y: auto; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; }
+    .log .row { padding: 2px 8px; border-radius: 4px; display: flex; gap: 8px; align-items: baseline; }
+    .log .row:nth-child(odd) { background: rgba(0,0,0,0.025); }
+    .log .ts { color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .log .type { flex-shrink: 0; font-weight: 600; }
+    .log .type-ai { color: var(--primary); }
+    .log .type-stage_detail { color: var(--warn); }
+    .log .type-error { color: var(--danger); }
+    .log .data { color: var(--text); word-break: break-all; flex: 1; min-width: 0; }
+
+    .empty { color: var(--muted); text-align: center; padding: 32px; font-size: 13px; }
+
+    .history-row { display: flex; justify-content: space-between; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+    .history-row:hover { background: var(--log-bg); }
+    .history-row + .history-row { margin-top: 2px; }
+    .history-row .when { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .history-row .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--primary-soft); color: var(--primary); margin-right: 6px; }
+    .history-row .badge.full { background: #fed7aa; color: var(--warn); }
+    .history-row .stats-line { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .toast { position: fixed; right: 16px; bottom: 16px; padding: 10px 16px; border-radius: 8px; background: var(--text); color: white; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; max-width: 320px; }
+    .toast.show { opacity: 1; }
+    .toast.error { background: var(--danger); }
+    .toast.success { background: var(--success); }
+
+    details summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 4px 0; user-select: none; }
+    details[open] summary { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span id="dot" class="status-dot idle"></span>采集进度监控</h1>
+      <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">API <code id="apiLabel">http://localhost:1003</code></div>
+    </div>
+    <div class="tabs" id="modeTabs">
+      <button data-mode="overview" class="active">概览</button>
+      <button data-mode="log">详细日志</button>
+      <button data-mode="history">历史周期</button>
+    </div>
+  </header>
+
+  <section id="view-overview">
+    <div class="card">
+      <h2>控制</h2>
+      <div class="controls">
+        <button id="btnIncremental" class="primary">增量补齐</button>
+        <button id="btnFull">全量刷新</button>
+        <button id="btnClear">清空日志</button>
+      </div>
+      <div style="color: var(--muted); font-size: 12px; margin-top: 10px;">
+        增量补齐：仅补齐新候选，不动现有 AI 缓存。全量刷新：拉取全部候选并重新审核（耗 AI 配额）。
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>当前周期</h2>
+      <div id="currentInfo" class="empty">无进行中的采集周期</div>
+    </div>
+
+    <div class="card" id="reviewCard" style="display:none;">
+            <h2>后台任务 <span style="font-weight:normal;text-transform:none;color:var(--muted);font-size:11px;">(审核 / 简介补齐 / AI 关联补全，独立 worker 空闲运行)</span></h2>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.03em;">AI 审核（判定是否真实虚拟歌姬演唱）</div>
+      <div class="stats">
+        <div class="stat"><div class="label">状态</div><div class="value" id="rvStatus">待机</div></div>
+        <div class="stat"><div class="label">待审</div><div class="value" id="rvPending">0</div></div>
+        <div class="stat"><div class="label">已处理</div><div class="value" id="rvDone">0</div></div>
+        <div class="stat"><div class="label">通过</div><div class="value success" id="rvKept">0</div></div>
+        <div class="stat"><div class="label">剔除</div><div class="value danger" id="rvDropped">0</div></div>
+      </div>
+      <div style="margin-top:14px;border-top:1px solid var(--border, rgba(128,128,128,.15));padding-top:10px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.03em;">简介补齐（为关联识别补拉简介）</div>
+        <div class="stats">
+          <div class="stat"><div class="label">状态</div><div class="value value-md" id="rvDescStatus">待机</div></div>
+
+
+          <div class="stat"><div class="label">已补齐</div><div class="value value-md" id="rvDescDone">0</div></div>
+          <div class="stat"><div class="label">待补齐</div><div class="value value-md" id="rvDescPending">0</div></div>
+        </div>
+      </div>
+      <div style="margin-top:14px;border-top:1px solid var(--border, rgba(128,128,128,.15));padding-top:10px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.03em;">AI 关联补全（识别系列/翻唱/原曲/专辑）</div>
+        <div class="stats">
+          <div class="stat"><div class="label">状态</div><div class="value value-md" id="rvRelStatus">待机</div></div>
+          <div class="stat"><div class="label">已分析</div><div class="value value-md" id="rvRelDone">0</div></div>
+          <div class="stat"><div class="label">待分析</div><div class="value value-md" id="rvRelPending">0</div></div>
+          <div class="stat"><div class="label">已识别</div><div class="value value-md success" id="rvRelHit">0</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="stagesCard" style="display:none;">
+      <h2>各阶段</h2>
+      <div id="stages"></div>
+    </div>
+
+    <div class="card">
+      <h2>统计</h2>
+      <div class="stats">
+        <div class="stat"><div class="label">候选视频</div><div class="value" id="stCandidates">0</div></div>
+        <div class="stat"><div class="label">已收录</div><div class="value success" id="stKept">0</div></div>
+        <div class="stat"><div class="label">AI 通过</div><div class="value success" id="stAiPass">0</div></div>
+        <div class="stat"><div class="label">AI 拒绝</div><div class="value danger" id="stAiReject">0</div></div>
+        <div class="stat"><div class="label">AI 缓存命中</div><div class="value" id="stAiCache">0</div></div>
+        <div class="stat"><div class="label">API 调用</div><div class="value" id="stApiCalls">0</div></div>
+        <div class="stat"><div class="label">错误</div><div class="value danger" id="stErrors">0</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-log" style="display:none;">
+    <div class="card">
+      <h2>事件流 <span style="font-weight:normal;text-transform:none;color:var(--muted);font-size:11px;">(实时，最多保留 1000 行)</span></h2>
+      <div id="log" class="log"><div class="empty" style="padding: 16px;">等待事件…</div></div>
+    </div>
+  </section>
+
+  <section id="view-history" style="display:none;">
+    <div class="card">
+      <h2>历史周期 <span style="font-weight:normal;text-transform:none;color:var(--muted);font-size:11px;">(重启后保留最近 100 次)</span></h2>
+      <div id="history"><div class="empty">无历史记录</div></div>
+    </div>
+  </section>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  const API = (() => {
+    if (location.protocol === "file:") return "http://localhost:1003";
+    const i = location.origin.lastIndexOf(":");
+    return i > 0 ? location.origin.substring(0, i) + ":1003" : location.origin;
+  })();
+  document.getElementById("apiLabel").textContent = API;
+
+  const modeTabs = document.getElementById("modeTabs");
+  modeTabs.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    [...modeTabs.children].forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const mode = btn.dataset.mode;
+    document.getElementById("view-overview").style.display = mode === "overview" ? "" : "none";
+    document.getElementById("view-log").style.display = mode === "log" ? "" : "none";
+    document.getElementById("view-history").style.display = mode === "history" ? "" : "none";
+  });
+
+  const dot = document.getElementById("dot");
+  const currentInfo = document.getElementById("currentInfo");
+  const stagesEl = document.getElementById("stages");
+  const stagesCard = document.getElementById("stagesCard");
+  const logEl = document.getElementById("log");
+  const historyEl = document.getElementById("history");
+  const logRows = [];
+
+  const STAGE_LABELS = {
+    init: "初始化", newlist: "分区最新流", search: "关键词检索", ranking: "排行 up 名单",
+    upPosts: "UP 投稿扫描", evocalrank: "evocalrank 历期", candidates: "候选汇总",
+    verify: "逐条校验 + AI 审核", snapshot: "写入快照", done: "完成",
+  };
+
+  function fmtTime(ts) {
+    const d = new Date(ts);
+    return d.toLocaleTimeString("zh-CN", { hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0").slice(0, 3);
+  }
+  function fmtDur(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + " 秒";
+    const m = Math.floor(s / 60);
+    return m + " 分 " + (s % 60) + " 秒";
+  }
+  function fmtRel(ts) {
+    const d = new Date(ts);
+    return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  function toast(msg, kind = "") {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.className = "toast show " + kind;
+    setTimeout(() => { t.classList.remove("show"); }, 2400);
+  }
+
+  function renderCurrent(cycle) {
+    if (!cycle) {
+      dot.className = "status-dot idle";
+      currentInfo.className = "empty";
+      currentInfo.textContent = "无进行中的采集周期";
+      stagesCard.style.display = "none";
+      return;
+    }
+    dot.className = cycle.endedAt ? "status-dot idle" : "status-dot live";
+    const elapsed = (cycle.endedAt || Date.now()) - cycle.startedAt;
+    currentInfo.className = "";
+    currentInfo.innerHTML = `
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div>
+          <strong>${cycle.kind === "full" ? "全量刷新" : cycle.kind === "incremental" ? "增量补齐" : "自动采集"}</strong>
+          <span style="color:var(--muted);margin-left:8px;">ID: <code>${cycle.id.slice(0, 14)}</code></span>
+        </div>
+        <div style="color:var(--muted);font-variant-numeric:tabular-nums;">
+          ${cycle.endedAt ? "已结束" : "进行中"} · 已运行 ${fmtDur(elapsed)}
+        </div>
+      </div>
+      ${cycle.error ? `<div style="color:var(--danger);margin-top:8px;font-size:12px;">${cycle.error}</div>` : ""}
+    `;
+
+    const stages = Object.entries(cycle.stages || {});
+    if (stages.length === 0) {
+      stagesCard.style.display = "none";
+    } else {
+      stagesCard.style.display = "";
+      stagesEl.innerHTML = stages.map(([k, s]) => {
+        const label = STAGE_LABELS[k] || s.label || k;
+        const total = s.total || 0;
+        const done = s.done || 0;
+        const pct = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
+        const isDone = cycle.endedAt || (total > 0 && done >= total);
+        return `
+          <div class="stage">
+            <div class="stage-head">
+              <span class="stage-label">${label}</span>
+              <span class="stage-meta">${done} / ${total || "?"}${s.kept != null ? ` · 累计 ${s.kept}` : ""}</span>
+            </div>
+            <div class="bar ${isDone ? "done" : ""}"><div style="width:${pct}%"></div></div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  function renderStats(stats) {
+    document.getElementById("stCandidates").textContent = stats.candidates || 0;
+    document.getElementById("stKept").textContent = stats.kept || 0;
+    document.getElementById("stAiPass").textContent = stats.aiPass || 0;
+    document.getElementById("stAiReject").textContent = stats.aiReject || 0;
+    document.getElementById("stAiCache").textContent = stats.aiCacheHit || 0;
+    document.getElementById("stApiCalls").textContent = stats.aiApiCalls || 0;
+    document.getElementById("stErrors").textContent = stats.errors || 0;
+  }
+
+  function pushLog(evt) {
+    if (logRows.length >= 1000) logRows.shift();
+    logRows.push(evt);
+    if (logEl.firstElementChild?.classList.contains("empty")) logEl.innerHTML = "";
+    const row = document.createElement("div");
+    row.className = "row";
+    let dataText = "";
+    try {
+      dataText = JSON.stringify(evt.data);
+    } catch (e) { dataText = "[unserializable]"; }
+    if (dataText.length > 200) dataText = dataText.slice(0, 200) + "...";
+    row.innerHTML = `<span class="ts">${fmtTime(evt.ts)}</span><span class="type type-${evt.type}">${evt.type}</span><span class="data">${escapeHtml(dataText)}</span>`;
+    logEl.appendChild(row);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function escapeHtml(s) {
+    return s.replace(/[&<>\"']/g, c => ({ "&": "&", "<": "<", ">": ">", "\"": "\"", "'": "'" }[c]));
+  }
+
+  function renderHistory(history, cycles) {
+    const all = [...(history || []), ...(cycles || []).filter(c => !history.some(h => h.id === c.id))];
+    if (all.length === 0) {
+      historyEl.innerHTML = `<div class="empty">无历史记录</div>`;
+      return;
+    }
+    historyEl.innerHTML = all.slice(0, 50).map(c => {
+      const isFull = c.kind === "full";
+      const stats = c.stats || {};
+      return `
+        <div class="history-row">
+          <div>
+            <span class="badge ${isFull ? "full" : ""}">${isFull ? "全量" : "增量"}</span>
+            <strong>${fmtRel(c.startedAt)}</strong>
+            <span style="color:var(--muted);margin-left:8px;">${fmtDur(c.durationMs || (c.endedAt ? c.endedAt - c.startedAt : 0))}</span>
+            ${c.error ? `<span style="color:var(--danger);margin-left:8px;">⚠ ${c.error}</span>` : ""}
+          </div>
+          <div class="stats-line">
+            候选 ${stats.candidates || 0} · 收录 ${stats.kept || 0} · AI ${stats.aiPass || 0}✓/${stats.aiReject || 0}✗ · 缓存 ${stats.aiCacheHit || 0} · API ${stats.aiApiCalls || 0}
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  let currentCycle = null;
+  let lastCycleId = null;
+
+  function applyEvent(evt) {
+    if (currentCycle && evt.cycleId !== currentCycle.id && !currentCycle.endedAt) {}
+    pushLog(evt);
+  }
+
+  function applySnapshot(snap) {
+    currentCycle = snap.current;
+    lastCycleId = currentCycle ? currentCycle.id : lastCycleId;
+    renderCurrent(currentCycle);
+    renderStats(currentCycle?.stats || {});
+    renderHistory(snap.history, snap.cycles);
+    applyReview(snap.review);
+  }
+
+  function applyCycleStart(cycle) {
+    currentCycle = cycle;
+    lastCycleId = cycle.id;
+    renderCurrent(cycle);
+    toast("新采集周期开始", "success");
+  }
+  function applyCycleEnd(cycle) {
+    currentCycle = cycle;
+    renderCurrent(cycle);
+    renderStats(cycle.stats || {});
+    toast(cycle.error ? "采集异常结束" : "采集完成", cycle.error ? "error" : "success");
+    fetch(API + "/api/progress/history").then(r => r.json()).then(j => {
+      if (j.ok) renderHistory(j.data.history, j.data.cycles);
+    }).catch(() => {});
+  }
+  function applyStageUpdate(p) {
+    if (!currentCycle || currentCycle.id !== p.cycleId) return;
+    currentCycle.stages[p.stage.stage] = p.stage;
+    renderCurrent(currentCycle);
+  }
+
+  const reviewCard = document.getElementById("reviewCard");
+  function applyReview(r) {
+    if (!r) { reviewCard.style.display = "none"; return; }
+    reviewCard.style.display = "";
+    document.getElementById("rvStatus").textContent = r.running ? "审核中" : (r.pending > 0 ? "待消化" : "待机");
+    document.getElementById("rvStatus").className = "value" + (r.running ? " success" : "");
+    document.getElementById("rvPending").textContent = r.pending ?? 0;
+    document.getElementById("rvDone").textContent = r.done ?? 0;
+    document.getElementById("rvKept").textContent = r.kept ?? 0;
+    document.getElementById("rvDropped").textContent = r.dropped ?? 0;
+    // 简介补齐（后台 worker）
+    const dStatus = document.getElementById("rvDescStatus");
+    dStatus.textContent = r.descRunning ? "跑动中" : (r.descPending > 0 ? "排队中" : "待机");
+    dStatus.className = "value value-md" + (r.descRunning ? " success" : "");
+    document.getElementById("rvDescDone").textContent = r.descDone ?? 0;
+    document.getElementById("rvDescPending").textContent = r.descPending ?? 0;
+    // AI 关联补全（后台 worker）
+    const relStatus = document.getElementById("rvRelStatus");
+    relStatus.textContent = r.aiRelatedRunning ? "跑动中" : (r.aiRelatedPending > 0 ? "排队中" : "待机");
+    relStatus.className = "value value-md" + (r.aiRelatedRunning ? " success" : "");
+    document.getElementById("rvRelDone").textContent = r.aiRelatedDone ?? 0;
+    document.getElementById("rvRelPending").textContent = r.aiRelatedPending ?? 0;
+    document.getElementById("rvRelHit").textContent = r.aiRelatedEnriched ?? 0;
+  }
+
+  let es;
+  function connect() {
+    if (es) es.close();
+    dot.className = "status-dot live";
+    es = new EventSource(API + "/api/progress/stream");
+    es.addEventListener("snapshot", (e) => applySnapshot(JSON.parse(e.data)));
+    es.addEventListener("event", (e) => applyEvent(JSON.parse(e.data)));
+    es.addEventListener("cycle:start", (e) => applyCycleStart(JSON.parse(e.data)));
+    es.addEventListener("cycle:end", (e) => applyCycleEnd(JSON.parse(e.data)));
+    es.addEventListener("stage:update", (e) => applyStageUpdate(JSON.parse(e.data)));
+    es.addEventListener("review:update", (e) => applyReview(JSON.parse(e.data)));
+    es.onerror = () => {
+      dot.className = "status-dot err";
+      setTimeout(connect, 2000);
+    };
+  }
+  connect();
+
+  async function trigger(force) {
+    const btn = force ? btnFull : btnIncremental;
+    btn.disabled = true;
+    try {
+      const r = await fetch(API + "/api/collect/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+      const j = await r.json();
+      if (r.status === 409) {
+        toast("采集中，请等待当前周期完成", "error");
+      } else if (!j.ok) {
+        toast("触发失败：" + (j.message || r.status), "error");
+      } else {
+        toast(force ? "已触发全量刷新" : "已触发增量补齐", "success");
+      }
+    } catch (e) {
+      toast("请求失败：" + e.message, "error");
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 1500);
+    }
+  }
+  const btnIncremental = document.getElementById("btnIncremental");
+  const btnFull = document.getElementById("btnFull");
+  btnIncremental.onclick = () => trigger(false);
+  btnFull.onclick = () => trigger(true);
+
+  document.getElementById("btnClear").onclick = () => {
+    logRows.length = 0;
+    logEl.innerHTML = `<div class="empty" style="padding: 16px;">已清空</div>`;
+  };
+
+  setInterval(() => {
+    fetch(API + "/api/progress/history").then(r => r.json()).then(j => {
+      if (j.ok) {
+        if (!currentCycle || currentCycle.endedAt) renderHistory(j.data.history, j.data.cycles);
+        renderStats(j.data.current?.stats || currentCycle?.stats || {});
+      }
+    }).catch(() => {});
+  }, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "title": "成就",
+  "desc": "基于榜单历史数据实时计算的永久成就",
+  "modeDaily": "日榜",
+  "modeWeekly": "周榜",
+  "modeMonthly": "月榜",
+  "modeAnnual": "年榜",
+  "cat": {
+    "superhit": { "label": "SUPERHIT", "desc": "累计 2 次登上主榜前 3 名" },
+    "monban": { "label": "门番达成", "desc": "28 期内 20 次或 50 期内 30 次登上主榜，且无连续 8 期未上榜" },
+    "myth": { "label": "神话达成", "desc": "播放总量突破一千万" },
+    "annual_top": { "label": "年榜首位", "desc": "首次成为年榜首位" }
+  },
+  "rankChipTitle": "第 {{issue}} 期 · 第 {{rank}} 名",
+  "modalTitle": "{{name}} — {{shown}} / {{total}} 期",
+  "close": "关闭",
+  "viewAll": "+{{n}} 查看全部",
+  "toNow": "至今",
+  "totalSongs": "共 {{total}} 首",
+  "emptyWeekly": "暂无达成记录",
+  "unknown": "未知",
+  "prev": "上一页",
+  "next": "下一页"
+}

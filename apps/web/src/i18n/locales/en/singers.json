@@ -1,0 +1,19 @@
+{
+  "title": "Vocalists",
+  "desc": "Vocalists identified from this issue's chart, {{n}} total",
+  "tabView": "Views",
+  "tabFavorite": "Favorites",
+  "tabCount": "Songs",
+  "songLine": "{{n}} songs · {{view}} views · {{favorite}} favorites",
+  "partners": "Frequent partners: ",
+  "pt": "pt",
+  "loading": "Loading…",
+  "pending": "Chart data is still being collected, please try again later",
+  "badFormat": "Malformed data",
+  "tabSinger": "Vocalists",
+  "tabProducer": "Producers",
+  "tabEngine": "Engines",
+  "tabUploader": "Uploaders",
+  "tabPending": "Data not yet collected",
+  "noPicture": "No avatar"
+}

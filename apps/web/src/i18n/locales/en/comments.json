@@ -1,0 +1,22 @@
+{
+  "comment": "Comments",
+  "close": "Close",
+  "emptyHint": "No comments yet, say something nice",
+  "replyCount": "{{n}} replies",
+  "reply": "Reply",
+  "delete": "Delete",
+  "loadMore": "View more comments",
+  "loading": "Loading…",
+  "replyTo": "Reply to @{{name}}",
+  "cancelReply": "Cancel reply",
+  "writeReply": "Write your reply…",
+  "writeComment": "Write your comment…",
+  "posting": "Posting…",
+  "postReply": "Post reply",
+  "postComment": "Post comment",
+  "loginToComment": "Log in to join the discussion",
+  "justNow": "Just now",
+  "minAgo": "{{n}} minutes ago",
+  "hourAgo": "{{n}} hours ago",
+  "dayAgo": "{{n}} days ago"
+}

@@ -1,0 +1,15 @@
+{
+  "networkError": "Network request failed, please try again later",
+  "collecting": "Data is being collected, please refresh later",
+  "empty": "No data",
+  "unknown": "Unknown",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "close": "Close",
+  "more": "More",
+  "all": "All",
+  "copy": "Copy",
+  "copied": "Copied",
+  "retry": "Retry",
+  "loading": "Loading…"
+}

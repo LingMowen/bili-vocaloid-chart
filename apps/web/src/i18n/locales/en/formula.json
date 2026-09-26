@@ -1,0 +1,17 @@
+{
+  "title": "Custom Formula Ranking",
+  "desc": "Recompute this issue's board with different weighting formulas and see how the ranking changes",
+  "linkCalc": "Custom weights →",
+  "default": {
+    "name": "Default composite score",
+    "desc": "Favorites×4 + Coins×5 + Likes×2 + Comments×1.5 + Shares×3 + Views×1 + Danmaku×1"
+  },
+  "pure": {
+    "name": "Popularity first",
+    "desc": "Views and likes only"
+  },
+  "supporter": {
+    "name": "Fan favorite",
+    "desc": "Favorites and coins weighted more"
+  }
+}

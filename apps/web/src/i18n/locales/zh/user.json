@@ -1,0 +1,20 @@
+{
+  "loading": "加载中…",
+  "notFound": "未收录该 P主 的音乐",
+  "back": "返回搜索",
+  "scopeDesc": "此处仅展示已被本站收录的作品数据。",
+  "songsTitle": "收录作品（{{n}}）",
+  "sumSong": "收录作品",
+  "sumView": "总播放",
+  "sumFavorite": "总收藏",
+  "sumCoin": "总硬币",
+  "sumLike": "总点赞",
+  "pt": " 分",
+  "noSongs": "暂无收录作品",
+  "coopTitle": "合作成员",
+  "noCoop": "暂无合作成员",
+  "coopVideos": "合作视频（{{n}}）",
+  "coopRole": "以“{{role}}”身份参与",
+  "coopBy": "主投",
+  "noCoopVideos": "暂无合作参与的视频"
+}

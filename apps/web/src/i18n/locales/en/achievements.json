@@ -1,0 +1,24 @@
+{
+  "title": "Achievements",
+  "desc": "Permanent achievements computed from chart history",
+  "modeDaily": "Daily chart",
+  "modeWeekly": "Weekly chart",
+  "modeMonthly": "Monthly chart",
+  "modeAnnual": "Annual chart",
+  "cat": {
+    "superhit": { "label": "SUPERHIT", "desc": "Reached the top 3 of the main chart 2 times" },
+    "monban": { "label": "Gatekeeper", "desc": "On the main chart 20 of 28 issues or 30 of 50, with no 8 consecutive misses" },
+    "myth": { "label": "Myth", "desc": "Total plays exceeded 10 million" },
+    "annual_top": { "label": "Annual #1", "desc": "First time topping the annual chart" }
+  },
+  "rankChipTitle": "Issue #{{issue}} · Rank #{{rank}}",
+  "modalTitle": "{{name}} — {{shown}} / {{total}} issues",
+  "close": "Close",
+  "viewAll": "+{{n}} view all",
+  "toNow": "to date",
+  "totalSongs": "{{total}} songs",
+  "emptyWeekly": "No achievements yet",
+  "unknown": "Unknown",
+  "prev": "Previous",
+  "next": "Next"
+}

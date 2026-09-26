@@ -1,0 +1,66 @@
+# ============================================================
+# xngschina — Git 忽略规则
+# 原则：只提交「源码 + 文档 + 参考基准」，其余（依赖 / 构建产物 /
+#       运行时缓存 / 凭据 / 大体积会话导出）一律不入库。
+# ============================================================
+
+# ---------- 依赖 ----------
+node_modules/
+**/node_modules/
+
+# ---------- 构建产物 ----------
+dist/
+**/dist/
+build/
+**/build/
+*.stale-*
+apps/web/vite.config.js.timestamp-*.mjs
+
+# ---------- 运行时数据与缓存（体积大、可重建） ----------
+apps/api/cache/
+apps/api/.data/
+apps/api/*.log
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ---------- 环境变量（含 BILIBILI_COOKIE / AI 密钥等凭据） ----------
+.env
+.env.*
+!.env.example
+
+# ---------- 会话导出与抓取产物（体积大，且含账号明文） ----------
+evocalrank-com.json
+Open CODE*.json
+*.json.bak
+temp-check.js
+tmp-*.json
+tmp-*.log
+tmp-ref*.log
+
+# ---------- 临时脚本与截图 ----------
+tmp-*
+tmp_*
+tmp-ui/
+
+# ---------- Playwright MCP 运行日志/截图（含验证码截图，勿入库） ----------
+.playwright-mcp/
+
+# ---------- 参考站整站镜像 ----------
+/1/
+
+# ---------- 参考站截图（体积大；DOM/资源快照仍保留） ----------
+.reference/**/shots/
+.reference/**/*.png
+.reference/**/*.jpg
+.reference/**/*.jpeg
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp

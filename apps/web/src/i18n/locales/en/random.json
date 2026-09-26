@@ -1,0 +1,19 @@
+{
+  "title": "Random pick",
+  "desc": "Not sure what to see? Pick a category and browse at random.",
+  "all": "Random everything",
+  "allDesc": "Open a random page from any category",
+  "kind_rank": "Ranking",
+  "kind_rankDesc": "A random ranking issue",
+  "kind_song": "Song",
+  "kind_songDesc": "A random song",
+  "kind_producer": "Producer",
+  "kind_producerDesc": "A random producer",
+  "kind_singer": "Singer",
+  "kind_singerDesc": "A random singer",
+  "kind_engine": "Engine",
+  "kind_engineDesc": "A random engine",
+  "kind_up": "Uploader",
+  "kind_upDesc": "A random uploader",
+  "rolling": "Rolling…"
+}

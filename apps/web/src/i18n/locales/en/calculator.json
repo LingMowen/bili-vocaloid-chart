@@ -1,0 +1,10 @@
+{
+  "title": "Score calculator",
+  "desc": "Composite score = Σ(metric × weight). Drag the sliders to adjust weights and instantly preview how the board's Top 10 changes",
+  "weightsTitle": "Metric weights",
+  "reset": "Reset",
+  "resetTitle": "Reset to default {{n}}",
+  "resetAll": "Reset all to default",
+  "previewTitle": "Top 10 by current weights",
+  "metricCoin": "Coins"
+}

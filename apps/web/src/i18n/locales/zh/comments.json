@@ -1,0 +1,22 @@
+{
+  "comment": "评论",
+  "close": "关闭",
+  "emptyHint": "暂无评论，来说两句吧",
+  "replyCount": "{{n}} 回复",
+  "reply": "回复",
+  "delete": "删除",
+  "loadMore": "查看更多评论",
+  "loading": "加载中…",
+  "replyTo": "回复 @{{name}}",
+  "cancelReply": "取消回复",
+  "writeReply": "写下你的回复…",
+  "writeComment": "写下你的评论…",
+  "posting": "发布中…",
+  "postReply": "发布回复",
+  "postComment": "发布评论",
+  "loginToComment": "登录后参与评论",
+  "justNow": "刚刚",
+  "minAgo": "{{n}} 分钟前",
+  "hourAgo": "{{n}} 小时前",
+  "dayAgo": "{{n}} 天前"
+}

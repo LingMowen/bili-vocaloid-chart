@@ -1,0 +1,7 @@
+{
+  "title": "On this day · {{month}}/{{day}}",
+  "desc": "Virtual singer songs submitted on this day in past years — {{count}} songs in total",
+  "loading": "Loading…",
+  "emptyTitle": "No past submissions on this day yet",
+  "emptyDesc": "Data is based on the chart cache and may be supplemented after a cache refresh"
+}

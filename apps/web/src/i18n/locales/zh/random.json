@@ -1,0 +1,19 @@
+{
+  "title": "随机看看",
+  "desc": "不知道看什么？选一个类别随机逛逛。",
+  "all": "全部随机",
+  "allDesc": "从所有类别里随机一个页面",
+  "kind_rank": "排行榜",
+  "kind_rankDesc": "随机一期排行榜",
+  "kind_song": "歌曲",
+  "kind_songDesc": "随机一首歌曲",
+  "kind_producer": "P主",
+  "kind_producerDesc": "随机一位 P主",
+  "kind_singer": "歌手",
+  "kind_singerDesc": "随机一位歌手",
+  "kind_engine": "引擎",
+  "kind_engineDesc": "随机一个引擎",
+  "kind_up": "UP主",
+  "kind_upDesc": "随机一位UP主",
+  "rolling": "抽取中…"
+}

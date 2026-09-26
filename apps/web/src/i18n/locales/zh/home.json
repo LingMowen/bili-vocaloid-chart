@@ -1,0 +1,20 @@
+{
+  "viewAllBoard": "查看完整榜单",
+  "edNominating": "ED 提名进行中",
+  "edNominatingDesc": "为心中的节目主题曲投上一票",
+  "goNominate": "去提名",
+  "todayDaily": "最新排行",
+  "achievements": "成就速递",
+  "viewAll": "查看全部",
+  "achieved": "达成",
+  "latestBoard": "最新排行",
+  "viewFullBoard": "查看完整榜单",
+  "noData": "暂无数据",
+  "dataTotal": "数据总榜",
+  "stats": "统计",
+  "historyToday": "历史上的今天 · {{month}}月{{day}}日",
+  "viewMore": "查看更多",
+  "noHistoryToday": "今天暂无往期投稿，去榜单看看吧",
+  "goBoard": "前往榜单",
+  "onBoard": "上榜"
+}

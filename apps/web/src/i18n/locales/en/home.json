@@ -1,0 +1,20 @@
+{
+  "viewAllBoard": "View full board",
+  "edNominating": "ED nomination open",
+  "edNominatingDesc": "Vote for the theme song",
+  "goNominate": "Nominate",
+  "todayDaily": "Today's daily",
+  "achievements": "Achievements",
+  "viewAll": "View all",
+  "achieved": "Achieved",
+  "latestBoard": "Latest board",
+  "viewFullBoard": "View full board",
+  "noData": "No data",
+  "dataTotal": "Total data",
+  "stats": "Stats",
+  "historyToday": "On this day · {{month}}/{{day}}",
+  "viewMore": "View more",
+  "noHistoryToday": "No historical posts today, check the board",
+  "goBoard": "Go to board",
+  "onBoard": "Listed"
+}
