@@ -1,0 +1,13 @@
+{
+  "view": "播放",
+  "favorite": "收藏",
+  "coin": "硬币",
+  "like": "点赞",
+  "danmaku": "弹幕",
+  "reply": "评论",
+  "share": "分享",
+  "rank": "排名",
+  "point": "得分",
+  "cover": "翻",
+  "statRank": "{{rank}}位"
+}

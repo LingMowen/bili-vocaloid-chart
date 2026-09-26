@@ -4,12 +4,11 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { api, fmt } from "../api.js";
 import { qk } from "../queryKeys.js";
-import { NewBadge, RankRow, AchievementBadges, STAT_META } from "../components/RankCard.jsx";
+import { RankRow, AchievementBadges, CardActions, NewPill, GRID_BADGE, STAT_META } from "../components/RankCard.jsx";
 import SelectField, { SelectItem } from "../components/ui/SelectField.jsx";
 import Tip from "../components/ui/Tip.jsx";
 import { PillTabs } from "../components/ui/Tabs.jsx";
-import { LayoutGrid, List } from "lucide-react";
-import { useShortFmt } from "../useShortFmt.js";
+import { LayoutGrid, List, Trophy } from "lucide-react";
 
 const PERIODS = [
   ["daily", "rank.daily"],
@@ -34,41 +33,26 @@ const ORDER_META = [
 
 function StatCells({ item }) {
   const { t } = useTranslation();
-  const short = useShortFmt();
   const first = STAT_META.slice(0, 4);
   const second = STAT_META.slice(4);
+  // 指标名走 i18n（原站 data.view 等）；数值用原始千分位，不缩写
+  const cell = ([key, label]) => {
+    const rank = item[`rank_${key}`];
+    const best = rank === 1;
+    return (
+      <div key={key}>
+        <div className="text-[10px] text-muted-foreground xs:text-xs">{t(`video.${label}`)}</div>
+        <div className={`text-xs font-semibold xs:text-sm ${best ? "text-rose-600 dark:text-rose-400" : ""}`}>{fmt(item[key])}</div>
+        <div className={`text-[10px] xs:text-xs ${best ? "text-rose-500" : "text-muted-foreground"}`}>
+          {rank != null ? t("rank.posShort", { n: rank }) : "-"}
+        </div>
+      </div>
+    );
+  };
   return (
     <div className="mt-3 space-y-2 xs:mt-4 xs:space-y-3">
-      <div className="grid grid-cols-4 gap-2 text-center xs:gap-3">
-        {first.map(([key, label]) => {
-          const rank = item[`rank_${key}`];
-          const best = rank === 1;
-          return (
-            <div key={key}>
-              <div className="text-[10px] text-muted-foreground xs:text-xs">{label}</div>
-              <div className={`text-xs font-semibold xs:text-sm ${best ? "text-rose-600 dark:text-rose-400" : ""}`}>{short(item[key])}</div>
-              <div className={`text-[10px] xs:text-xs ${best ? "text-rose-500" : "text-muted-foreground"}`}>
-                {rank != null ? t("video.rankPos", { n: rank }) : "-"}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-center xs:gap-3">
-        {second.map(([key, label]) => {
-          const rank = item[`rank_${key}`];
-          const best = rank === 1;
-          return (
-            <div key={key}>
-              <div className="text-[10px] text-muted-foreground xs:text-xs">{label}</div>
-              <div className={`text-xs font-semibold xs:text-sm ${best ? "text-rose-600 dark:text-rose-400" : ""}`}>{short(item[key])}</div>
-              <div className={`text-[10px] xs:text-xs ${best ? "text-rose-500" : "text-muted-foreground"}`}>
-                {rank != null ? t("video.rankPos", { n: rank }) : "-"}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <div className="grid grid-cols-4 gap-2 text-center xs:gap-3">{first.map(cell)}</div>
+      <div className="grid grid-cols-3 gap-2 text-center xs:gap-3">{second.map(cell)}</div>
     </div>
   );
 }
@@ -77,25 +61,27 @@ function DeltaBox({ item }) {
   const { t } = useTranslation();
   const up = item.delta > 0;
   const hasPrev = item.prev_score != null;
+  // 原站：无上期数据时右侧只放一枚渐变 NEW 胶囊（不是三行「新上榜 / - pt / NEW」）
   if (!hasPrev) {
     return (
       <div className="shrink-0 text-right">
-        <div className="space-y-1 text-xs">
-          <div className="font-medium text-amber-600 dark:text-amber-400">{t("rank.newListed")}</div>
-          <div className="tabular-nums text-muted-foreground">- {t("rank.pt")}</div>
-          <div className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">NEW</div>
-        </div>
+        <NewPill />
       </div>
     );
   }
+  // 顶行「上期 N」的颜色与箭头跟随「名次升降」，底行百分比跟随「分数升降」——两者可以相反
+  // （原站第 4 张卡：名次 2→4 变差=绿、分数 +17.7% 上升=红）。红涨绿跌，沿用中国股市惯例。
+  const prevRank = item.prev_rank;
+  const curRank = item.score_rank;
+  const rankUp = prevRank != null && curRank != null && curRank < prevRank;
   return (
     <div className="shrink-0 text-right">
       <div className="space-y-1 text-xs">
-        <div className={`flex items-center justify-end gap-0.5 font-medium ${up ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-3.5 w-3.5 shrink-0 ${up ? "" : "rotate-180"}`} aria-hidden="true">
+        <div className={`flex items-center justify-end gap-0.5 font-medium ${rankUp ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-3.5 w-3.5 shrink-0 ${rankUp ? "" : "rotate-180"}`} aria-hidden="true">
             <path d="m18 15-6-6-6 6" />
           </svg>
-          {item.prev_rank != null ? t("video.issueN", { n: item.prev_rank }) : "-"}
+          {prevRank != null ? t("rank.prevRankLabel", { n: prevRank }) : "-"}
         </div>
         <div className="tabular-nums text-muted-foreground">{fmt(item.prev_score)} {t("rank.pt")}</div>
         <div className={`font-semibold tabular-nums ${up ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
@@ -107,16 +93,44 @@ function DeltaBox({ item }) {
   );
 }
 
-function GridCard({ item, rank, external }) {
+/**
+ * 歌姬名 → 本站歌手页 id（原站 `/vocalist/:id` 对应本站 `/singer/:vocabili_id`）。
+ * 榜单条目只带 `girls: string[]` 没有 id，所以按名批量查一次 `/api/singers?names=`。
+ * 一次请求解析整页歌姬，结果按名缓存 30 分钟；查不到的返回 null，卡片退化为纯文本（不产生死链）。
+ */
+function useSingerIds(names) {
+  const key = [...new Set(names)].sort().join(",");
+  const q = useQuery({
+    queryKey: qk.singers({ names: key }),
+    queryFn: () => api(`/api/singers?names=${encodeURIComponent(key)}`, { silent: true }),
+    enabled: key.length > 0,
+    staleTime: 30 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+  return useMemo(() => {
+    const map = {};
+    const s = q.data?.singers;
+    if (s) for (const [n, v] of Object.entries(s)) if (v?.vocabili_id) map[n] = v.vocabili_id;
+    return map;
+  }, [q.data]);
+}
+
+function GridCard({ item, rank, external, singerIds = {} }) {
   const { t } = useTranslation();
   const girls = item.girls || [];
-  const href = external && item.bvid
+  const songHref = external && item.bvid
     ? `https://www.bilibili.com/video/${item.bvid}`
     : `/video/${item.aid}`;
+  const ext = external ? { target: "_blank", rel: "noopener noreferrer" } : {};
+  const ownerName = item.owner?.name || item.author || girls[0] || t("rank.virtualSinger");
+  const ownerMid = item.owner?.mid || null;
+  // 原站徽章是「累计上榜次数」（接口字段 count），本站后端目前只算了「连续在榜」
+  // （streak）——口径差异见 docs/对接文档.md；后端补上 count 后此处自动切过去。
+  const listedCount = item.count ?? item.streak ?? 0;
   return (
-    <article className="group min-w-0 overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
+    <article className="group overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
       <div className="relative aspect-16/10 w-full overflow-hidden bg-muted">
-        <a className="block h-full w-full" href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>
+        <a className="block h-full w-full" href={songHref} {...ext}>
           <img
             src={item.pic || item.cover}
             alt={item.title}
@@ -125,60 +139,153 @@ function GridCard({ item, rank, external }) {
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         </a>
-        <div className="pointer-events-none absolute left-2 top-2 flex h-9 w-9 items-center justify-center rounded-xl text-lg font-bold shadow-lg xs:left-3 xs:top-3 xs:h-11 xs:w-11 xs:text-xl bg-amber-500 text-white">
+        <div
+          className={`pointer-events-none absolute left-2 top-2 flex h-9 w-9 items-center justify-center rounded-xl text-lg font-bold shadow-lg xs:left-3 xs:top-3 xs:h-11 xs:w-11 xs:text-xl ${
+            GRID_BADGE[Math.min(rank, GRID_BADGE.length - 1)]
+          }`}
+        >
           {rank + 1}
         </div>
         <div className="pointer-events-none absolute right-2 top-2 rounded-lg bg-amber-500 px-2 py-0.5 text-xs font-bold text-white shadow-lg xs:right-3 xs:top-3 xs:px-2.5 xs:py-1 xs:text-sm">
-          {item.peak_rank != null ? t("rank.peakRank", { n: item.peak_rank }) : item.streak ? t("rank.streak", { n: item.streak }) : t("rank.newListed")}
+          {t("rank.streak", { n: listedCount })}
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-2 pt-6 xs:px-3 xs:pb-3 xs:pt-8">
           <div className="flex items-end justify-end">
             <span className="text-xl font-bold text-white xs:text-2xl">{fmt(item.score ?? 0)}</span>
             <span className="ml-1 text-xs text-white/80 xs:text-sm">{t("rank.pt")}</span>
-            {item.new && <span className="mb-0.5 ml-2 rounded-sm bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">NEW</span>}
           </div>
         </div>
       </div>
       <div className="p-3 xs:p-4">
         <div className="flex items-start gap-x-3">
-          <div className="shrink-0">
-            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl bg-gray-200 dark:bg-gray-700">
+          <a href={ownerMid ? `/member/${ownerMid}` : undefined} className="shrink-0">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-200 dark:bg-gray-700">
               {item.owner?.face ? (
                 <img src={item.owner.face} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <span className="text-sm font-bold text-muted-foreground">{(item.owner?.name || item.girls?.[0] || "?").slice(0, 1)}</span>
               )}
             </div>
-          </div>
+          </a>
           <div className="min-w-0 flex-1 space-y-1">
-            <span className="block max-w-full overflow-hidden text-xs font-medium text-blue-600 dark:text-blue-400">
-              <span className="inline-block whitespace-nowrap">{item.owner?.name || item.author || item.girls?.[0] || t("rank.virtualSinger")}</span>
-            </span>
-            <a href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} className="block hover:text-primary">
-              <span className="block max-w-full overflow-hidden text-sm font-bold leading-snug xs:text-base">
-                <span className="inline-flex max-w-full items-center gap-1">
-                  <span className="inline-block whitespace-nowrap">{item.title}</span>
-                  {item.new && <NewBadge />}
-                  <AchievementBadges item={item} />
+            <span className="block max-w-full overflow-hidden text-blue-600 dark:text-blue-400 text-xs font-medium">
+              <span className="inline-block whitespace-nowrap">
+                <span className="shrink-0">
+                  {ownerMid ? (
+                    <Link to={`/member/${ownerMid}`} className="hover:text-primary hover:underline">
+                      {ownerName}
+                    </Link>
+                  ) : (
+                    ownerName
+                  )}
                 </span>
               </span>
-            </a>
+            </span>
+            <Link to={songHref} {...ext} className="block hover:text-primary">
+              <span className="block max-w-full overflow-hidden text-sm font-bold leading-snug xs:text-base">
+                <span className="inline-block whitespace-nowrap">
+                  {item.title}
+                  <AchievementBadges item={item} className="ml-1 align-middle" />
+                </span>
+              </span>
+            </Link>
             {item.title_cn && (
               <span className="block max-w-full overflow-hidden text-xs text-muted-foreground">
                 <span className="inline-block whitespace-nowrap">{item.title_cn}</span>
               </span>
             )}
             {girls.length > 0 && (
-              <span className="block max-w-full overflow-hidden text-xs font-medium text-pink-600 dark:text-pink-400">
-                <span className="inline-block whitespace-nowrap">{girls.join("、")}</span>
+              <span className="block max-w-full overflow-hidden text-pink-600 dark:text-pink-400 text-xs font-medium">
+                <span className="inline-block whitespace-nowrap">
+                  {girls.map((g, i) => {
+                    const sid = singerIds[g];
+                    return (
+                      <span key={`${g}-${i}`} className="shrink-0">
+                        {i > 0 && <span className="mx-1 text-muted-foreground/40">/</span>}
+                        {sid ? (
+                          <Link to={`/singer/${sid}`} className="hover:text-primary hover:underline">
+                            {g}
+                          </Link>
+                        ) : (
+                          g
+                        )}
+                      </span>
+                    );
+                  })}
+                </span>
               </span>
             )}
           </div>
           <DeltaBox item={item} />
         </div>
         <StatCells item={item} />
+        <CardActions item={item} />
       </div>
     </article>
+  );
+}
+
+/**
+ * 侧栏「今日达成 / 百万达成」（原站 BoardPage 的 ct 组件）。
+ * 原站只挂在日刊/周刊上：日刊标题「今日达成」、周刊「百万达成」，其余周期整卡不渲染。
+ * ⚠ 口径差异：原站该卡包在 require:"user" 的登录门后（其 milestones 接口需鉴权），
+ * 本站 /api/board/milestones 不鉴权、直接展示 —— 不为了对齐一张登录墙而把数据藏起来。
+ */
+function MilestoneCard({ period, issue }) {
+  const { t } = useTranslation();
+  const q = useQuery({
+    queryKey: ["boardMilestones", period, issue],
+    queryFn: () =>
+      api(`/api/board/milestones?period=${period}&ps=10${issue ? `&issue=${encodeURIComponent(issue)}` : ""}`, {
+        silent: true,
+      }),
+    enabled: issue != null && String(issue) !== "",
+    staleTime: 60 * 1000,
+  });
+  const list = q.data?.list || [];
+  const total = q.data?.total ?? 0;
+  return (
+    <div className="overflow-hidden rounded-2xl border bg-card">
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-1.5">
+          <Trophy className="h-3.5 w-3.5 text-amber-500" />
+          <h3 className="text-sm font-bold">{t(period === "daily" ? "rank.milestoneToday" : "rank.milestoneMillion")}</h3>
+        </div>
+        {total > 0 && (
+          <span className="text-[11px] text-muted-foreground/60">{t("rank.milestoneItems", { n: total })}</span>
+        )}
+      </div>
+      {q.isLoading ? (
+        <div className="space-y-2 px-4 py-4">
+          {[0, 1, 2].map((n) => (
+            <div key={n} className="h-10 animate-pulse rounded-lg bg-muted/60" />
+          ))}
+        </div>
+      ) : list.length === 0 ? (
+        <p className="px-4 pb-6 pt-4 text-center text-xs text-muted-foreground">{t("rank.milestoneEmpty")}</p>
+      ) : (
+        <ul className="divide-y divide-border/30 border-t border-border/30">
+          {list.map((m) => (
+            <li key={`${m.aid}-${m.milestone}`}>
+              <Link
+                to={`/video/${m.aid}`}
+                className="flex min-h-12 items-center gap-2.5 px-3 py-2 transition-colors hover:bg-muted/40"
+              >
+                <span className="inline-flex shrink-0 items-center rounded-md bg-amber-100 px-2 py-0.5 text-[12px] font-bold tabular-nums text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+                  {m.milestone / 1e4}万
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium">{m.title}</span>
+                  <span className="mt-0.5 block truncate text-[11px] leading-tight text-muted-foreground/70">
+                    {[m.owner?.name, (m.girls || []).join("、")].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -233,6 +340,9 @@ export default function RankPage() {
 
   const items = data?.list || [];
   const shown = useMemo(() => items, [items]);
+  // 榜单条目只带歌姬名，不带 id；整页收集后一次性解析成 /singer/:id 链接
+  const girlNames = useMemo(() => (data?.list || []).flatMap((it) => it.girls || []), [data]);
+  const singerIds = useSingerIds(girlNames);
   const periodLabel = t(PERIODS.find(([id]) => id === period)?.[1] || "rank.daily");
 
   const curIssue = issue != null && String(issue) !== "" ? String(issue) : data?.issue;
@@ -340,7 +450,13 @@ export default function RankPage() {
                   view === "grid" ? (
                     <div className="grid gap-5 md:grid-cols-2">
                       {shown.map((item, i) => (
-                        <GridCard key={item.bvid || item.aid} item={item} rank={(page - 1) * PAGE_SIZE + i} external={false} />
+                        <GridCard
+                          key={item.bvid || item.aid}
+                          item={item}
+                          rank={(page - 1) * PAGE_SIZE + i}
+                          external={false}
+                          singerIds={singerIds}
+                        />
                       ))}
                     </div>
                   ) : (
@@ -468,6 +584,9 @@ export default function RankPage() {
                 </ol>
               )}
             </div>
+            {(period === "daily" || period === "weekly") && (
+              <MilestoneCard period={period} issue={curIssue} />
+            )}
           </div>
         </aside>
       </div>

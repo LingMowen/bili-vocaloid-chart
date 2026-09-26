@@ -66,11 +66,15 @@ function pick(obj, keys) {
   return out;
 }
 
-async function video(aid) {
+/**
+ * 取单个稿件详情。
+ * @param {{aid?:number, bvid?:string}} idParam 二选一，SDK 的 /x/web-interface/view 两个都收
+ */
+async function fetchVideo(idParam) {
   const client = await getClient();
   const { getVideoInfo, getVideoPages, getVideoTags } = await sdk();
 
-  const view = await call(() => getVideoInfo(client, { aid }));
+  const view = await call(() => getVideoInfo(client, idParam));
   if (!view || view.code !== 0) {
     return { ok: false, code: view?.code ?? -1, message: view?.message ?? "request failed" };
   }
@@ -157,4 +161,7 @@ async function member(mid) {
   };
 }
 
-module.exports = { video, member, getClient };
+const video = (aid) => fetchVideo({ aid });
+const videoByBvid = (bvid) => fetchVideo({ bvid });
+
+module.exports = { video, videoByBvid, member, getClient };

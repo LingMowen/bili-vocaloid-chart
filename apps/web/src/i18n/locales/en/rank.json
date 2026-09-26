@@ -41,5 +41,14 @@
   "singerRankSongs": "{{n}} songs",
   "singerRankGo": "All singers",
   "tabSinger": "Singers",
-  "tabProducer": "Producers"
+  "tabProducer": "Producers",
+  "actionPlay": "Play",
+  "actionHistory": "History",
+  "actionCalculator": "Calculator",
+  "milestoneToday": "Today",
+  "milestoneMillion": "Million",
+  "milestoneItems": "{{n}} items",
+  "milestoneEmpty": "No milestones this issue",
+  "posShort": "#{{n}}",
+  "prevRankLabel": "Prev {{n}}"
 }

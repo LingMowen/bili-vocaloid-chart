@@ -18,6 +18,10 @@ import zhTags from "./locales/zh/tags.json";
 import enTags from "./locales/en/tags.json";
 import zhCalculator from "./locales/zh/calculator.json";
 import enCalculator from "./locales/en/calculator.json";
+import zhCalculatorDisplay from "./locales/zh/calculatorDisplay.json";
+import enCalculatorDisplay from "./locales/en/calculatorDisplay.json";
+import zhData from "./locales/zh/data.json";
+import enData from "./locales/en/data.json";
 import zhFormula from "./locales/zh/formula.json";
 import enFormula from "./locales/en/formula.json";
 import zhAchievements from "./locales/zh/achievements.json";
@@ -56,6 +60,8 @@ const resources = {
     search: zhSearch,
     tags: zhTags,
     calculator: zhCalculator,
+    calculatorDisplay: zhCalculatorDisplay,
+    data: zhData,
     formula: zhFormula,
     achievements: zhAchievements,
     today: zhToday,
@@ -79,6 +85,8 @@ const resources = {
     search: enSearch,
     tags: enTags,
     calculator: enCalculator,
+    calculatorDisplay: enCalculatorDisplay,
+    data: enData,
     formula: enFormula,
     achievements: enAchievements,
     today: enToday,

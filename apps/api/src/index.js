@@ -5,6 +5,7 @@ const http = require("node:http");
 const bili = require("./bili");
 const collector = require("./collector");
 const services = require("./services");
+const statHistory = require("./statHistory");
 const vocabili = require("./vocabili");
 const { canonicalGirl, canonicalGirls, aliasesOf, expandNames } = require("./girls");
 const config = require("./config");
@@ -60,6 +61,54 @@ app.get("/api/video/:aid", (req, res, next) => {
   const aid = parseId(req.params.aid, "aid");
   if (!aid) return fail(res, 400, "invalid aid");
   wrap(req, res, next, () => bili.video(aid));
+});
+
+/**
+ * 最近的周二 00:00（今天若是周二则取今天），返回秒级时间戳。
+ * 口径与原站前端 `X()` 完全一致，用于「新曲」时间偏移 timeOffset。
+ */
+function recentTuesdayStart() {
+  const now = new Date();
+  const back = (now.getDay() - 2 + 7) % 7; // getDay(): 周二 = 2
+  const d = new Date(now);
+  d.setDate(now.getDate() - back);
+  d.setHours(0, 0, 0, 0);
+  return Math.floor(d.getTime() / 1000);
+}
+
+// 分数计算器：按 BV 号取实时数据（供 /calculator 的「获取」按钮使用）
+app.get("/api/calculator/bv", (req, res, next) => {
+  const raw = String(req.query.bvid || "").trim();
+  const m = raw.match(/BV[0-9A-Za-z]{10}/);
+  if (!m) return fail(res, 400, "invalid bvid");
+  wrap(req, res, next, async () => {
+    const r = await bili.videoByBvid(m[0]);
+    if (!r.ok) return r;
+    const d = r.data;
+    const s = d.stat || {};
+    return {
+      ok: true,
+      data: {
+        bvid: d.bvid,
+        aid: d.aid,
+        title: d.title,
+        pic: d.pic,
+        pubdate: d.pubdate,
+        copyright: d.copyright,
+        // 距「最近的周二 00:00」的秒数；无发布时间则为 null
+        timeOffset: d.pubdate ? Math.floor(d.pubdate - recentTuesdayStart()) : null,
+        stat: {
+          view: s.view ?? 0,
+          favorite: s.favorite ?? 0,
+          coin: s.coin ?? 0,
+          like: s.like ?? 0,
+          danmaku: s.danmaku ?? 0,
+          reply: s.reply ?? 0,
+          share: s.share ?? 0,
+        },
+      },
+    };
+  });
 });
 
 app.get("/api/song-history/:aid", (req, res, next) => {
@@ -515,6 +564,122 @@ app.get("/api/board/singers", (req, res, next) => {
   wrap(req, res, next, async () => {
     const d = await services.buildBoardSingers(period, issue, limit, kind, type);
     return { ok: true, data: d };
+  });
+});
+
+// ---- 榜单侧栏「今日达成 / 百万达成」------------------------------------------
+// 对齐参考站：该卡只出现在日刊与周刊（BoardPage 内 $s(board) 判定），
+// 日刊标题「今日达成」、周刊「百万达成」，参考站数据源 /v3/milestones/{daily|weekly}。
+//
+// 口径（本站推断 —— 参考站该接口需登录，原始阈值集不可见）：
+//   里程碑 = 累计播放量首次跨过万级阈值；
+//   判定   = 用 stat_daily 每日快照比较「前一日 < 阈值 ≤ 当日」；
+//   日刊取该期起始日当天，周刊取该期整段窗口；
+//   阈值沿用歌曲详情页「达成里程碑」的同一套（10万/50万/100万/…/10亿），
+//   周刊只保留 ≥100 万档 —— 与「百万达成」文案一致，且站内自洽。
+// 阈值梯（1-5-10 万进制），与歌曲详情页「达成里程碑」同一套，日刊额外下探到 1万/5万
+// —— 因为卡片徽章单位就是「万」(`milestone/1e4`)，日刊若从 10万 起会几乎恒为空。
+const MILESTONE_THS = [1e4, 5e4, 1e5, 5e5, 1e6, 5e6, 1e7, 5e7, 1e8, 5e8, 1e9];
+const MILESTONE_THS_WEEK = MILESTONE_THS.filter((v) => v >= 1e6);
+
+function shiftDayKey(key, days) {
+  const [y, m, d] = key.split("-").map(Number);
+  const t = new Date(y, m - 1, d + days);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`;
+}
+
+// 取 <= key 的最近一份快照日期（快照有断档，周刊窗口末尾常常还没采到）
+function snapshotKeyOnOrBefore(key, maxBack) {
+  const have = new Set(statHistory.listSnapshotDates());
+  for (let i = 0; i <= maxBack; i++) {
+    const k = shiftDayKey(key, -i);
+    if (have.has(k)) return k;
+  }
+  return null;
+}
+
+// 该期榜单元信息（issue/date_start/date_end/list）：当期走内存缓存，历史期走归档
+function boardMetaFor(period, issue) {
+  const cur = readCached(`board_${period}.json`);
+  if (issue == null || (cur && Number(cur.issue) === Number(issue))) return cur || null;
+  try {
+    return JSON.parse(
+      fs.readFileSync(path.join(__dirname, "..", "cache", "board_archive", period, `${issue}.json`), "utf8"),
+    );
+  } catch (e) {
+    return null;
+  }
+}
+
+app.get("/api/board/milestones", (req, res, next) => {
+  const raw = String(req.query.period || "daily");
+  // 参考站该卡只挂在日刊/周刊上，其余周期直接返回空壳（前端也不会请求）
+  if (raw !== "daily" && raw !== "weekly") {
+    return res.json({ ok: true, data: { period: raw, issue: null, date: null, total: 0, list: [] } });
+  }
+  const period = raw;
+  const issue =
+    req.query.issue != null && String(req.query.issue).trim() !== "" ? Number(req.query.issue) : null;
+  let ps = Number(req.query.ps) || 10;
+  if (!Number.isFinite(ps) || ps < 1 || ps > 50) ps = 10;
+  wrap(req, res, next, async () => {
+    const meta = boardMetaFor(period, issue);
+    const empty = { period, issue: meta?.issue ?? issue ?? null, date: null, total: 0, list: [] };
+    if (!meta || !meta.date_start || !meta.date_end) return { ok: true, data: empty };
+
+    const endDay = period === "daily" ? meta.date_start : shiftDayKey(meta.date_end, -1);
+    const toKey = snapshotKeyOnOrBefore(endDay, 7);
+    const fromKey = snapshotKeyOnOrBefore(shiftDayKey(meta.date_start, -1), 7);
+    if (!toKey || !fromKey || toKey <= fromKey) return { ok: true, data: empty };
+    const fromSnap = statHistory.snapshotAt(fromKey);
+    const toSnap = statHistory.snapshotAt(toKey);
+    if (!fromSnap || !toSnap) return { ok: true, data: empty };
+
+    const ths = period === "weekly" ? MILESTONE_THS_WEEK : MILESTONE_THS;
+    const hits = [];
+    for (const aid of Object.keys(toSnap)) {
+      const b = fromSnap[aid];
+      if (!b) continue;
+      const pv = Number(b.view) || 0;
+      const cv = Number(toSnap[aid]?.view) || 0;
+      if (cv <= pv) continue;
+      let hit = null;
+      for (const v of ths) if (pv < v && cv >= v) hit = v; // 升序，最后一次命中即最高档
+      if (hit != null) hits.push({ aid, milestone: hit, view: cv });
+    }
+    // 档位高者优先，同档播放高者优先
+    hits.sort((a, b) => b.milestone - a.milestone || b.view - a.view);
+
+    // 补歌曲信息：先用当期榜单 list（字段最全），缺的回落全库
+    const byAid = new Map();
+    for (const it of meta.list || []) byAid.set(String(it.aid), it);
+    const missing = hits.filter((h) => !byAid.has(h.aid));
+    if (missing.length) {
+      const lib = await services.loadLibrary().catch(() => []);
+      const want = new Set(missing.map((h) => h.aid));
+      for (const it of lib || []) {
+        const k = String(it.aid);
+        if (want.has(k)) byAid.set(k, it);
+      }
+    }
+    const list = hits.slice(0, ps).map((h) => {
+      const it = byAid.get(h.aid) || {};
+      return {
+        aid: Number(h.aid),
+        title: it.title || `av${h.aid}`,
+        bvid: it.bvid || null,
+        pic: it.pic || it.cover || null,
+        girls: it.girls || [],
+        owner: it.owner || {},
+        milestone: h.milestone,
+        view: h.view,
+      };
+    });
+    return {
+      ok: true,
+      data: { period, issue: meta.issue ?? issue ?? null, date: toKey, total: hits.length, list },
+    };
   });
 });
 

@@ -5,6 +5,12 @@
 @theme {
   --radius: 0.625rem;
 
+  /* 原站自定义断点：xs = 400px（见 vocabili.top 编译产物 index-*.css 的
+     @media(min-width:400px){.xs\:...}）。Tailwind 默认没有 xs，缺了它全站
+     所有 xs: 变体都会静默失效。另两档 360px / 460px 在原站是任意值写法
+     min-[360px]: / min-[460px]:，无需在此声明。 */
+  --breakpoint-xs: 400px;
+
   --color-background: oklch(100% 0 0);
   --color-foreground: oklch(14.5% 0 0);
   --color-card: oklch(100% 0 0);

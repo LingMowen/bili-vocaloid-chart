@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { Calculator, ExternalLink, History } from "lucide-react";
 import { fmt, fmtDate } from "../api.js";
 import { useShortFmt } from "../useShortFmt.js";
 import Tip from "./ui/Tip.jsx";
@@ -16,11 +17,71 @@ export const STAT_META = [
 
 const RANK_LABELS = ["bg-amber-500 text-white", "bg-slate-400 text-white", "bg-amber-700 text-white", "bg-muted text-muted-foreground"];
 
+/**
+ * 网格卡片封面左上角名次徽章的配色。
+ * 取自原站榜单页 DOM：第 1 名 bg-amber-500、第 2 名 bg-slate-400、
+ * 第 3 名 bg-amber-700、第 4 名起 bg-black/70（全部 text-white）。
+ * 注意与列表行用的 RANK_LABELS 不同 —— 列表行的第 4 档是 bg-muted，别统一。
+ */
+export const GRID_BADGE = [
+  "bg-amber-500 text-white",
+  "bg-slate-400 text-white",
+  "bg-amber-700 text-white",
+  "bg-black/70 text-white",
+];
+
 export function NewBadge() {
   return (
     <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-sm bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
       NEW
     </span>
+  );
+}
+
+/**
+ * 卡片右侧「本期新上榜」胶囊 —— 原站榜单卡片的写法，与标题旁的 NewBadge 不是同一个东西：
+ *   `<div class="shrink-0 text-right"><span class="inline-block rounded-full
+ *    bg-linear-to-r from-rose-500 to-pink-500 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">NEW</span></div>`
+ * 文案固定英文 NEW（原站 zh 语言下也是 NEW），不走 i18n。
+ */
+export function NewPill() {
+  return (
+    <span className="inline-block rounded-full bg-linear-to-r from-rose-500 to-pink-500 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
+      NEW
+    </span>
+  );
+}
+
+/**
+ * 网格卡片底部操作行（原站 `action.play` / `action.history` / `action.calculator`）。
+ * 原站第三格在未登录时是禁用的「登录后可使用计算器」；本站计算器不需要登录，
+ * 因此改为可用入口（口径差异见 docs/对接文档.md）。
+ */
+export function CardActions({ item }) {
+  const { t } = useTranslation();
+  const biliHref = item.bvid ? `https://www.bilibili.com/video/${item.bvid}` : `/video/${item.aid}`;
+  const btn = "flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-medium transition xs:gap-1.5 xs:py-2 xs:text-sm";
+  const icon = "h-3 w-3 xs:h-3.5 xs:w-3.5";
+  return (
+    <div className="mt-3 grid grid-cols-3 gap-1.5 xs:mt-4 xs:gap-2">
+      <a
+        href={biliHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${btn} bg-primary text-primary-foreground hover:opacity-90`}
+      >
+        <ExternalLink className={icon} />
+        {t("rank.actionPlay")}
+      </a>
+      <Link to={`/video/${item.aid}`} className={`${btn} border hover:bg-accent`}>
+        <History className={icon} />
+        {t("rank.actionHistory")}
+      </Link>
+      <Link to="/calculator" className={`${btn} border hover:bg-accent`}>
+        <Calculator className={icon} />
+        {t("rank.actionCalculator")}
+      </Link>
+    </div>
   );
 }
 

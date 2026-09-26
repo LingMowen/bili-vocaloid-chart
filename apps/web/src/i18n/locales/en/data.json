@@ -1,0 +1,13 @@
+{
+  "view": "Views",
+  "favorite": "Favorites",
+  "coin": "Coins",
+  "like": "Likes",
+  "danmaku": "Danmaku",
+  "reply": "Replies",
+  "share": "Shares",
+  "rank": "Rank",
+  "point": "Points",
+  "cover": "Cover",
+  "statRank": "#{{rank}}"
+}

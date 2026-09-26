@@ -41,5 +41,14 @@
   "singerRankSongs": "{{n}}首上榜",
   "singerRankGo": "全部歌手",
   "tabSinger": "歌手",
-  "tabProducer": "P主"
+  "tabProducer": "P主",
+  "actionPlay": "播放",
+  "actionHistory": "历史",
+  "actionCalculator": "分数计算器",
+  "milestoneToday": "今日达成",
+  "milestoneMillion": "百万达成",
+  "milestoneItems": "{{n}} 项",
+  "milestoneEmpty": "本期暂无里程碑",
+  "posShort": "第{{n}}名",
+  "prevRankLabel": "上期 {{n}}"
 }
