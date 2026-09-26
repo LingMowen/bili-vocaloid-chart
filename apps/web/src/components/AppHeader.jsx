@@ -162,7 +162,6 @@ function MobileNavDrawer({ open, onClose, onLogin }) {
           <div className="rounded-lg border bg-card p-2">
             <Link
               to="/"
-              end
               onClick={onClose}
               className="block rounded-md px-2 py-2 font-medium text-foreground transition hover:bg-accent"
             >
@@ -227,12 +226,8 @@ export default function AppHeader() {
         </button>
 
         <Link to="/" className="flex shrink-0 items-center gap-2 text-base font-semibold">
-          <img
-            src="/favicon.svg"
-            alt=""
-            className="h-6 w-6 rounded-md object-cover"
-            onError={(e) => (e.currentTarget.style.display = "none")}
-          />
+          {/* 尺寸对齐参考站头部 logo（h-5 w-5 rounded-sm object-cover） */}
+          <img src="/favicon.svg" alt="虚拟歌手榜单" className="h-5 w-5 rounded-sm object-cover" />
           <span className="hidden truncate font-bold sm:block">虚拟歌手榜单</span>
         </Link>
 

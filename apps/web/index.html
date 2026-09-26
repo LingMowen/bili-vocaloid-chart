@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      B 站图片 CDN（i0/i1/i2.hdslb.com）有防盗链：带非 bilibili 来源的 Referer 会返回 403，
+      不带 Referer 则 200。文档级设为 no-referrer，保证所有封面图请求都不带 Referer。
+      组件上的 referrerPolicy="no-referrer" 仍然保留 —— 它管不到 CSS 背景图、
+      懒加载竞态以及以后新增的代码路径，这一行是兜底。
+    -->
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>虚拟歌手榜单</title>
   </head>
   <body>
