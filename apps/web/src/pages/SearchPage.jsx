@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { X, Clock, TrendingUp, ArrowDownUp, ChevronDown, Music } from "lucide-react";
+import { X, Clock, TrendingUp, ArrowDownUp, ChevronDown } from "lucide-react";
 import { api, fmt, fmtShort } from "../api.js";
 import { qk } from "../queryKeys.js";
 import PopoverMenu from "../components/ui/Popover.jsx";
+import { EntityCard, ENTITY_GRID_WIDE } from "../components/ui/EntityCard.jsx";
+import { SegmentedTabs } from "../components/ui/Tabs.jsx";
 
 const HISTORY_KEY = "xngschina-search-history";
 const HISTORY_MAX = 10;
@@ -382,22 +384,13 @@ export default function SearchPage() {
       {/* 6 段 tabs（参考站 /search，含关键词时展示） */}
       {keyword && (
         <div className="mb-4 flex items-center gap-2 sm:mb-6 sm:gap-3">
-          <div className="grid flex-1 grid-cols-3 gap-1 rounded-lg bg-card p-1 shadow-sm sm:grid-cols-6 sm:rounded-xl">
-            {TAB_SEGS.map(([val, labelKey]) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => go(keyword, { type: val })}
-                className={`rounded-md py-1.5 text-xs font-medium transition sm:rounded-lg sm:py-2 sm:text-sm ${
-                  type === val
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
+          <SegmentedTabs
+            className="flex-1"
+            gridClass="grid-cols-3 sm:grid-cols-6"
+            value={type}
+            onChange={(v) => go(keyword, { type: v })}
+            items={TAB_SEGS.map(([val, labelKey]) => [val, t(labelKey)])}
+          />
 
           {(type === "song" || type === "video") &&
             sortMenu(
@@ -490,25 +483,17 @@ export default function SearchPage() {
           <div className="mb-3 text-xs text-muted-foreground sm:mb-4 sm:text-sm">
             {t("search.resultCount", { total: fmt(totalItems), shown: fmt(loadedCount) })}
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6">
+          <div className={ENTITY_GRID_WIDE}>
             {girls.map((g) => (
-              <Link
+              <EntityCard
                 key={g.name}
                 to={g.id ? `/singer/${g.id}` : `/search?keyword=${encodeURIComponent(g.name)}`}
-                className="group flex flex-col items-center gap-1.5 rounded-xl border bg-card p-3 text-center transition-shadow hover:shadow-md sm:rounded-2xl sm:p-4"
-              >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-500/10 sm:h-14 sm:w-14">
-                  {g.picture ? (
-                    <img src={g.picture} alt={g.name} loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-                  ) : (
-                    <Music className="h-5 w-5 text-blue-500 sm:h-6 sm:w-6" aria-hidden="true" />
-                  )}
-                </div>
-                <span className="line-clamp-1 max-w-full truncate text-xs font-medium group-hover:text-primary sm:text-sm">
-                  <Highlight text={g.name} keyword={keyword} />
-                </span>
-                <span className="text-[10px] text-muted-foreground sm:text-xs">{(g.count || 0) + " 首"}</span>
-              </Link>
+                picture={g.picture}
+                name={g.name}
+                alt={g.name}
+                nameNode={<Highlight text={g.name} keyword={keyword} />}
+                sub={`${g.count || 0} 首`}
+              />
             ))}
           </div>
         </div>

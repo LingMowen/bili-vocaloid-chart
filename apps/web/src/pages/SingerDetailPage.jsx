@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Cpu, ExternalLink, Heart, Music, Play, ThumbsUp, Users } from "lucide-react";
 import { api, fmt } from "../api.js";
 import { qk } from "../queryKeys.js";
+import { EntityCard, EntityCardGrid, ENTITY_GRID_NARROW } from "../components/ui/EntityCard.jsx";
 
 // ---- 区块标题 ----
 // 原站两种形态：
@@ -30,44 +31,28 @@ function SectionHead({ icon: Icon, title, to, toLabel }) {
   );
 }
 
-// ---- 圆形头像卡片网格：用于「使用的引擎 / 常合作P主」 ----
-// 原站：grid-cols-3 / sm:grid-cols-4 / lg:grid-cols-6，竖排（头像 + 名称 + N 首）
+// ---- 头像卡片网格：用于「使用的引擎 / 常合作P主」 ----
+// 卡片本体已抽到 components/ui/EntityCard.jsx（与 /singers、搜索页共用）。
+// 注意歌手详情页的网格断点与 /artists 不同：md 断点仍是 4 列，故用 ENTITY_GRID_NARROW。
 function AvatarCardGrid({ items, empty }) {
   const { t } = useTranslation();
-  if (!items?.length) return empty ? <p className="text-sm text-muted-foreground">{empty}</p> : null;
   return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
-      {items.map((it, i) => {
+    <EntityCardGrid
+      grid={ENTITY_GRID_NARROW}
+      items={items}
+      empty={empty}
+      render={(it, i) => {
         const entity = it.synthesizer || it.producer || {};
-        const key = entity.id ?? entity.name ?? i;
         return (
-          <div
-            key={key}
-            className="group flex flex-col items-center gap-1.5 rounded-xl border bg-card p-3 text-center transition-shadow hover:shadow-md sm:rounded-2xl sm:p-4"
-          >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-200 sm:h-14 sm:w-14 dark:bg-gray-700">
-              {entity.picture ? (
-                <img
-                  src={entity.picture}
-                  alt=""
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <Music className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-              )}
-            </div>
-            <span className="line-clamp-1 max-w-full text-xs font-medium group-hover:text-primary sm:text-sm">
-              {entity.name ?? t("singer.unknown")}
-            </span>
-            <span className="text-[10px] text-muted-foreground sm:text-xs">
-              {t("singer.countSongs", { n: it.count ?? 0 })}
-            </span>
-          </div>
+          <EntityCard
+            key={entity.id ?? entity.name ?? i}
+            picture={entity.picture}
+            name={entity.name ?? t("singer.unknown")}
+            sub={t("singer.countSongs", { n: it.count ?? 0 })}
+          />
         );
-      })}
-    </div>
+      }}
+    />
   );
 }
 

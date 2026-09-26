@@ -7,6 +7,7 @@ import { qk } from "../queryKeys.js";
 import { NewBadge, RankRow, AchievementBadges, STAT_META } from "../components/RankCard.jsx";
 import SelectField, { SelectItem } from "../components/ui/SelectField.jsx";
 import Tip from "../components/ui/Tip.jsx";
+import { PillTabs } from "../components/ui/Tabs.jsx";
 import { LayoutGrid, List } from "lucide-react";
 import { useShortFmt } from "../useShortFmt.js";
 
@@ -390,20 +391,15 @@ export default function RankPage() {
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold">{t("rank.singerRankThisIssue")}</h3>
                 </div>
-                <div className="flex shrink-0 items-center rounded-lg bg-muted/60 p-0.5">
-                  {[["singer", "rank.tabSinger"], ["producer", "rank.tabProducer"]].map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setSideTab(id)}
-                      className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
-                        sideTab === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {t(label)}
-                    </button>
-                  ))}
-                </div>
+                <PillTabs
+                  className="shrink-0"
+                  value={sideTab}
+                  onChange={setSideTab}
+                  items={[
+                    ["singer", t("rank.tabSinger")],
+                    ["producer", t("rank.tabProducer")],
+                  ]}
+                />
               </div>
               {singersQ.isLoading && !singersQ.data ? (
                 <div className="space-y-2 px-4 py-4">
