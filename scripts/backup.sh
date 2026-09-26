@@ -36,4 +36,8 @@ git add -A
 git commit -q -m "$MSG"
 
 echo "[backup] 已提交：$(git log --oneline -1)"
-echo "[backup] 仓库位置：$(git rev-parse --git-dir)  （应位于 E 盘）"
+GITDIR="$(git rev-parse --absolute-git-dir)"
+case "$GITDIR" in
+  [Ee]:/*) echo "[backup] 仓库位置：$GITDIR  ✅ 在 E 盘" ;;
+  *)       echo "[backup] 仓库位置：$GITDIR  ⚠ 不在 E 盘，请检查！" ;;
+esac
