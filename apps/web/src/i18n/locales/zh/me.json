@@ -1,0 +1,17 @@
+{
+  "title": "我的",
+  "notLoggedIn": "尚未登录",
+  "loginHint": "登录后可同步评论与偏好设置",
+  "joinedAt": "注册于",
+  "myComments": "我的评论",
+  "loadingComments": "评论加载中…",
+  "commentsEmpty": "还没有发表过评论",
+  "commentsEmptyHint": "去视频页说点什么吧",
+  "commentsLoadFailed": "评论加载失败",
+  "unknownVideo": "未知视频",
+  "appearance": "外观",
+  "themeLight": "浅色",
+  "themeDark": "深色",
+  "language": "语言",
+  "more": "更多"
+}

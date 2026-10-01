@@ -6,6 +6,7 @@ const score = require("./score");
 const aiReview = require("./aiReview");
 const statHistory = require("./statHistory");
 const evocalrank = require("./evocalrank");
+const pendingPool = require("./pendingPool");
 const progress = require("./progress");
 const { canonicalGirls } = require("./girls");
 
@@ -27,7 +28,25 @@ const AI_RE = /AI\s*(翻唱|演唱|cover|音|声|替换|重制)|AI音色|AI替�
 
 const TITLE_FILTER_RE = /转载|搬运|合集|收藏夹|盘点|排行|榜单|排行榜|精选|回放|直播|重传|补档|转投|剪辑集|催更|自存|动态|串烧|Cover合集|翻唱合集|每周|每日|月榜|周榜|新歌榜|热门榜|作品推荐|曲目推荐|推荐榜|推荐曲|安利|推荐向|下饭|歌单|补档计划|入坑|新人入坑|路人|盘点视频|TOP\d+|top\d+/i;
 
-const DESC_HARD_RE = /转载自|搬运自|转自|無断転載|未经授权转载|未经授权搬运|原投稿|投稿者已删|二传|盗稿|盗曲|niconico|n站|youtube|youtu\.be|sm\d{4,}|周刊|榜单|排行榜|新曲榜|月榜|周榜|新歌榜|热门榜|熟肉|中文字幕|自翻译|汉化组|字幕组|翻译组|烤曲|MMD|Project DIVA|宅舞|音游|谱面|自制谱|maimai|Majplay|缤纷舞台|世界计划|Project SEKAI|歌姬计划|节奏游戏|绘画过程|绘图过程|曲绘过程|非法调音|三创|示例工程|企划终止|直播回放|攻略|实况|通关|教程|杂谈|资讯|公告|避雷|本期素材|配队|遗器|侵删|联系就删|侵权就删|侵必删/i;
+// 简介强拒拆成三类，避免误杀原创曲（2026-09-27 修正）：
+//  ① 明确搬运表述 → 拒；
+//  ② 「無断転載」类词：日文投稿常见「無断転載禁止」= 作者声明禁止他人转载，
+//     **恰恰说明是原创**，此前一律拒掉，误杀大量本家投稿 → 仅在无「禁止」语义时才拒；
+//  ③ 平台外链（niconico / YouTube / sm 号）：术力口原创曲简介几乎都带作者本人的
+//     原投稿链接，单凭外链不足以判定搬运 → 从强拒里移除，只有与 ① 共现才拒；
+//  ④ 其余（MMD/游戏/熟肉/榜单/排行榜…）保持强拒。
+const DESC_PIRATE_RE = /转载自|搬运自|转自|未经授权转载|未经授权搬运|原投稿|投稿者已删|二传|盗稿|盗曲|授权代发|代投|不属于本频道|该视频不属于|侵删|联系就删|侵权就删|侵必删/i;
+const DESC_NOREPOST_RE = /無断転載|無断転用|無断使用/i;
+const DESC_DENY_RE = /禁止|禁じ|お断り|おことわり|NG/i;
+const DESC_HARD_RE = /周刊|榜单|排行榜|新曲榜|月榜|周榜|新歌榜|热门榜|熟肉|中文字幕|自翻译|汉化组|字幕组|翻译组|烤曲|MMD|Project DIVA|宅舞|音游|谱面|自制谱|maimai|Majplay|缤纷舞台|世界计划|Project SEKAI|歌姬计划|节奏游戏|绘画过程|绘图过程|曲绘过程|非法调音|三创|示例工程|企划终止|直播回放|攻略|实况|通关|教程|杂谈|资讯|公告|避雷|本期素材|配队|遗器/i;
+
+// 简介是否命中强拒（替代原先直接 DESC_HARD_RE.test(desc)）
+function descHardHit(desc) {
+  const d = String(desc || "");
+  if (DESC_PIRATE_RE.test(d)) return true;
+  if (DESC_NOREPOST_RE.test(d) && !DESC_DENY_RE.test(d)) return true;
+  return DESC_HARD_RE.test(d);
+}
 
 const HARD_FILTER_RE = /搬运|转载|翻录|無断転載|二传|盗稿|补档|重传|转投|niconico|n站|youtube|youtu\.be|sm\d{4,}|排行|榜单|排行榜|周刊|新曲榜|月榜|周榜|新歌榜|热门榜|盘点|合集|三创|熟肉|字幕|自翻译|汉化|烤曲|音游|谱面|自制谱|maimai|Majplay|MASTER|EXPERT|缤纷舞台|世界计划|Project SEKAI|歌姬计划|节奏游戏|MMD|Project DIVA|PJD|宅舞|攻略|实况|通关|教程|示例工程|企划终止|杂谈|资讯|公告|绘画过程|绘图过程|曲绘过程|非法调音|TOP\d+|top\d+|直播/i;
 
@@ -125,7 +144,12 @@ function extractGirls(text) {
 }
 
 function tagHit(tags, title = "") {
-  const text = String(title || "") + " " + (tags || []).map((t) => t.tag_name || "").join(" ");
+  // tags 兼容两种形态：[{tag_name}]（SDK 原始）与 字符串数组（buildItem 里已映射过）。
+  // 此前只写 t.tag_name，传字符串数组时每项都变空串 → **标签证据被整体丢弃**，
+  // 判定实际只看了标题：标题没写歌姬名、只有标签有的稿件（如「【重音テト】 胭脂」这类
+  // 标签为 重音テト/Vocaloid 的）会被误判「无虚拟歌手证据」而拒收。
+  const tagText = (tags || []).map((t) => (typeof t === "string" ? t : t?.tag_name || "")).join(" ");
+  const text = String(title || "") + " " + tagText;
   return HIT_RES.some(([, rx]) => rx.test(text));
 }
 
@@ -319,35 +343,71 @@ async function fetchCandidates(client, sdk) {
   }
   progress.emit("stage:detail", { stage: "evocalrank", msg: `evocalrank 收集 ${evoTotal} 个，累计候选 ${cand.size}` });
 
+  // 6) 待抓队列：外部发现源（vocabili 日刊等）看到、但本站尚未收录的视频。
+  //    这些是「已知该抓」的目标，直接注入候选，绕过分区/UP 池的覆盖限制 ——
+  //    保证上一轮漏掉的歌，下一轮 B 站采集一定能覆盖到。
+  let pendTotal = 0;
+  try {
+    const pend = pendingPool.list();
+    for (const p of pend) {
+      if (!p?.aid) continue;
+      if (cand.has(String(p.aid))) continue; // 已在候选里，无需重复注入
+      cand.set(String(p.aid), {
+        aid: String(p.aid),
+        bvid: p.bvid || "",
+        title: p.title || "",
+        typeid: VOCA_RID,
+        source: `pending:${p.source || "?"}`,
+      });
+      pendTotal++;
+    }
+  } catch (e) {
+    console.error(`[collector] 待抓队列注入失败: ${e.message}`);
+  }
+  if (pendTotal) {
+    console.log(`[collector] 待抓队列注入候选 ${pendTotal} 个`);
+    progress.emit("stage:detail", { stage: "pending", msg: `待抓队列注入 ${pendTotal} 个，累计候选 ${cand.size}` });
+  }
+
   return cand;
 }
 
 // 逐条判定：最终以 SDK 拉取的视频信息为准，应用过滤，产出 board item
+// 记录最近一次 buildItem 拒绝的原因：此前一律 return null，排查「明明有歌姬却被拒」时
+// 只能靠猜。调用方（如 scripts/enrich-from-vocabili.js）可取 getLastReject() 输出原因。
+let _lastReject = null;
+function reject(reason) {
+  _lastReject = reason;
+  return null;
+}
+
 async function buildItem(client, sdk, aid, it) {
+  _lastReject = null;
   const candTitle = stripHtml(it.title || "");
-  if (AI_RE.test(candTitle) || TITLE_FILTER_RE.test(candTitle)) return null;
+  if (AI_RE.test(candTitle) || TITLE_FILTER_RE.test(candTitle)) return reject("候选标题命中 AI/标题黑名单");
 
   const view = await bili.video(aid);
-  if (!view?.ok || !view.data) return null;
+  if (!view?.ok || !view.data) return reject(`取详情失败 ${view?.code ?? "?"} ${view?.message ?? ""}`.trim());
+
   const data = view.data;
   const title = data.title || candTitle;
-  if (AI_RE.test(title) || TITLE_FILTER_RE.test(title)) return null;
+  if (AI_RE.test(title) || TITLE_FILTER_RE.test(title)) return reject("标题命中 AI/标题黑名单");
 
   const tagNames = (data.tags || []).map((t) => t.tag_name || "");
-  if (AI_RE.test(tagNames.join(" "))) return null;
+  if (AI_RE.test(tagNames.join(" "))) return reject("标签命中 AI 黑名单");
   // 标签 + 标题含虚拟歌手证据（合成软件名 / 歌姬名任一命中）才收录
-  if (!tagHit(tagNames, title)) return null;
+  if (!tagHit(tagNames, title)) return reject(`无虚拟歌手证据（标题「${title}」标签 ${tagNames.join("/") || "无"}）`);
 
   const desc = data.desc || "";
   // 强信号：标题 + 标签直接拒
-  if (hardHit(`${title} ${tagNames.join(" ")}`)) return null;
+  if (hardHit(`${title} ${tagNames.join(" ")}`)) return reject("标题/标签命中强黑名单");
   // 简介强信号
-  if (DESC_HARD_RE.test(desc)) return null;
+  if (descHardHit(desc)) return reject("简介命中强黑名单（搬运/MMD/游戏等）");
   // 歌曲证据
-  if (!hasSongEvidence(title, tagNames, desc)) return null;
+  if (!hasSongEvidence(title, tagNames, desc)) return reject("缺歌曲证据（标题/标签/简介均无原创·翻唱·歌词等信号）");
 
   const duration = Number(data.duration) || 0;
-  if (duration < 120) return null;
+  if (duration < 120) return reject(`时长不足 120s（${duration}s）`);
 
   const stat = {
     view: data.stat?.view || 0,
@@ -430,6 +490,22 @@ function mergeWithPrev(fresh, prev) {
   return out;
 }
 
+// 落盘前**重新读磁盘**再合并。
+// 事故（2026-09-27）：collectAll 用的是「函数开头读到的 cached」，而一轮采集要跑很久；
+// 期间外部脚本（scripts/enrich-from-vocabili.js）补进库的条目，会在本轮结束时被
+// 这份旧快照**静默覆盖**——实测补的 25 首在 3 分钟内被抹回 11197。
+// 落盘一律以「磁盘最新」为底稿合并，保证任何外部写入都不会丢。
+function mergeToDisk(out, fallback) {
+  const diskNow = readDisk();
+  const base =
+    diskNow && Array.isArray(diskNow.data) && diskNow.data.length
+      ? diskNow.data
+      : Array.isArray(fallback)
+        ? fallback
+        : [];
+  return mergeWithPrev(out, base);
+}
+
 // 全量采集（从零 / 重建）。磁盘已有完整且新鲜的库时直接复用。
 async function collectAll(force = false) {
   // 已有一个周期在跑则不开启新周期（让上层 SSE 客户端看得到 currentCycle）
@@ -467,6 +543,9 @@ async function collectAll(force = false) {
     console.log(`[collector] 候选 ${aids.length} 个，开始逐条校验…`);
     const out = [];
     let done = 0;
+    // 待抓队列本轮结局（仅记录来自队列的 aid，避免多余内存占用）
+    const pendAids = pendingPool.aidSet();
+    const pendOutcome = new Map();
     progress.updateStage("verify", { label: "逐条校验 + AI 审核", total: aids.length, done: 0, kept: 0 });
     for (const aid of aids) {
       const it = cand.get(aid);
@@ -481,6 +560,9 @@ async function collectAll(force = false) {
         out.push(item);
         progress.bumpStat("kept");
       }
+      if (pendAids.has(String(aid))) {
+        pendOutcome.set(String(aid), { ok: !!item, reason: item ? null : _lastReject });
+      }
       done++;
       if (done % 10 === 0 || done === aids.length) {
         progress.updateStage("verify", { done, kept: out.length });
@@ -488,12 +570,12 @@ async function collectAll(force = false) {
       if (done % 50 === 0) {
         console.log(`[collector] 处理 ${done}/${aids.length}，收录 ${out.length}`);
         // 中途落盘同样走合并，避免采集进程中断后磁盘只剩半套库
-        writeDisk(0, mergeWithPrev(out, cached && Array.isArray(cached.data) ? cached.data : []), false);
+        writeDisk(0, mergeToDisk(out, cached && Array.isArray(cached.data) ? cached.data : []), false);
       }
     }
     out.sort((a, b) => b.score - a.score);
     // 合并上一轮未重抓到的条目，避免单轮通道失效造成历史收录静默丢失
-    const merged = mergeWithPrev(out, cached && Array.isArray(cached.data) ? cached.data : []);
+    const merged = mergeToDisk(out, cached && Array.isArray(cached.data) ? cached.data : []);
     merged.sort((a, b) => b.score - a.score);
     _library = merged;
     _at = Date.now();
@@ -505,6 +587,21 @@ async function collectAll(force = false) {
       progress.emit("stage:detail", { stage: "snapshot", msg: `已写入 ${day} 快照（${merged.length} 首）` });
     } catch (e) {
       console.error(`[collector] 写快照失败: ${e.message}`);
+    }
+    // 回写待抓队列：收录成功出队；内容不合规/稿件消失归档（不再重试）；请求失败保留待下轮
+    if (pendOutcome.size) {
+      try {
+        const r = pendingPool.settle(pendOutcome);
+        console.log(
+          `[collector] 待抓队列回写：出队 ${r.ok}，保留重试 ${r.retry}，归档收敛 ${r.closed}，剩余 ${r.pending}`,
+        );
+        progress.emit("stage:detail", {
+          stage: "pending",
+          msg: `待抓队列：出队 ${r.ok}，重试 ${r.retry}，收敛 ${r.closed}，剩余 ${r.pending}`,
+        });
+      } catch (e) {
+        console.error(`[collector] 待抓队列回写失败: ${e.message}`);
+      }
     }
     console.log(`[collector] 采集完成：本轮收录 ${out.length}/${aids.length}（合并后库存 ${merged.length}），耗时 ${((Date.now() - started) / 1000).toFixed(1)}s`);
     progress.emit("stage:detail", { stage: "done", msg: `完成：本轮收录 ${out.length}/${aids.length}，库存 ${merged.length}` });
@@ -829,6 +926,7 @@ async function startDescWorker({ idleMs = 20000, batch = 30 } = {}) {
 module.exports = {
   collectAll,
   buildItem,
+  getLastReject: () => _lastReject,
   fetchCandidates,
   getLibrary,
   reviewPending,

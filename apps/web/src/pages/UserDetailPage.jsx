@@ -1,9 +1,57 @@
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Handshake, Music, PlaySquare } from "lucide-react";
+import { ArrowLeft, Handshake, Music, PlaySquare, ArrowRightLeft, Flame, Clock } from "lucide-react";
 import { api, fmt, fmtDate } from "../api.js";
 import { qk } from "../queryKeys.js";
+import { EntityCard, EntityCardGrid, ENTITY_GRID_NARROW } from "../components/ui/EntityCard.jsx";
+
+// 区块标题（参考站 producer 页：图标 + h2）
+function SectionTitle({ icon: Icon, title }) {
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+      <h2 className="text-sm font-semibold xs:text-base">{title}</h2>
+    </div>
+  );
+}
+
+function SongTile({ s }) {
+  const { t } = useTranslation();
+  return (
+    <Link
+      to={`/video/${s.aid}`}
+      className="group rounded-xl border bg-card p-2 transition-shadow hover:shadow-md"
+    >
+      <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
+        {s.pic ? (
+          <img
+            src={s.pic}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="h-full w-full object-cover"
+          />
+        ) : null}
+      </div>
+      <p className="mt-2 line-clamp-2 text-xs font-medium group-hover:text-primary sm:text-sm">{s.title}</p>
+      <p className="mt-1 text-[11px] tabular-nums text-muted-foreground sm:text-xs">
+        {fmt(s.view)} {t("user.views")}
+        {s.pubdate ? ` · ${fmtDate(s.pubdate)}` : ""}
+      </p>
+    </Link>
+  );
+}
+
+function SongGrid({ items }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
+      {items.map((s) => (
+        <SongTile key={s.aid} s={s} />
+      ))}
+    </div>
+  );
+}
 
 function StaffChips({ staff }) {
   const { t } = useTranslation();
@@ -47,6 +95,9 @@ export default function UserDetailPage() {
   const summary = data?.summary || null;
   const songs = data?.songs || [];
   const coop = data?.coop || [];
+  const topGirls = data?.top_girls || [];
+  const hot = data?.hot_songs || [];
+  const latest = data?.latest_songs || [];
   const err = error?.message;
 
   if (err) return <p className="mx-auto max-w-4xl py-10 text-destructive">{err}</p>;
@@ -98,6 +149,37 @@ export default function UserDetailPage() {
           </div>
         )}
       </section>
+
+      <section className="rounded-2xl border bg-card p-4 xs:p-6">
+        <SectionTitle icon={ArrowRightLeft} title={t("user.coGirls")} />
+        <EntityCardGrid
+          grid={ENTITY_GRID_NARROW}
+          items={topGirls}
+          empty={t("user.noCoGirls")}
+          render={(g) => (
+            <EntityCard
+              to={g.id ? `/singer/${g.id}` : `/search?keyword=${encodeURIComponent(g.name)}`}
+              picture={g.picture}
+              name={g.name}
+              sub={t("user.songCount", { n: g.count })}
+            />
+          )}
+        />
+      </section>
+
+      {hot.length > 0 && (
+        <section className="rounded-2xl border bg-card p-4 xs:p-6">
+          <SectionTitle icon={Flame} title={t("user.hotSongs")} />
+          <SongGrid items={hot} />
+        </section>
+      )}
+
+      {latest.length > 0 && (
+        <section className="rounded-2xl border bg-card p-4 xs:p-6">
+          <SectionTitle icon={Clock} title={t("user.latestSongs")} />
+          <SongGrid items={latest} />
+        </section>
+      )}
 
       <section className="overflow-hidden rounded-2xl border bg-card">
         <div className="border-b bg-muted/30 px-4 py-3 xs:px-6">

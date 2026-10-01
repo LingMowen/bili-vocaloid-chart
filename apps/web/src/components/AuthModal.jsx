@@ -4,7 +4,20 @@ import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import Modal from "./ui/Modal.jsx";
 import Tip from "./ui/Tip.jsx";
-import { X } from "lucide-react";
+import {
+  X,
+  ChevronDown,
+  Wallet,
+  Eye,
+  PawPrint,
+  Flower2,
+  Smartphone,
+  Music2,
+  MessageSquare,
+} from "lucide-react";
+
+// 主推的三个渠道，直接展示；其余收进「更多登录方式」
+const PRIMARY_OAUTH = ["qq", "wx", "bilibili"];
 
 function QQIcon() {
   return (
@@ -18,11 +31,49 @@ function WeChatIcon() {
   );
 }
 
+function BilibiliIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-5 w-5">
+      <path d="M6.6 3.2 8.2 6.6" />
+      <path d="M17.4 3.2 15.8 6.6" />
+      <rect x="3.8" y="6.6" width="16.4" height="13.2" rx="3.6" />
+      <path d="M9 11.6v2.6" />
+      <path d="M15 11.6v2.6" />
+    </svg>
+  );
+}
+
+// 各渠道图标：qq / wx / bilibili 为手写品牌形，其余用 lucide 近似图标
+const OAUTH_ICONS = {
+  qq: QQIcon,
+  wx: WeChatIcon,
+  bilibili: BilibiliIcon,
+  alipay: (p) => <Wallet {...p} />,
+  sina: (p) => <Eye {...p} />,
+  baidu: (p) => <PawPrint {...p} />,
+  huawei: (p) => <Flower2 {...p} />,
+  xiaomi: (p) => <Smartphone {...p} />,
+  douyin: (p) => <Music2 {...p} />,
+  dingtalk: (p) => <MessageSquare {...p} />,
+};
+
 export default function AuthModal({ open, onClose }) {
   const { t } = useTranslation();
   const { login } = useAuth();
-  const OAUTH_LABELS = { qq: t("auth.qq"), wx: t("auth.wx") };
+  const OAUTH_LABELS = {
+    qq: t("auth.qq"),
+    wx: t("auth.wx"),
+    bilibili: t("auth.bilibili"),
+    alipay: t("auth.alipay"),
+    sina: t("auth.sina"),
+    baidu: t("auth.baidu"),
+    huawei: t("auth.huawei"),
+    xiaomi: t("auth.xiaomi"),
+    douyin: t("auth.douyin"),
+    dingtalk: t("auth.dingtalk"),
+  };
   const [oauth, setOauth] = useState([]);
+  const [showMore, setShowMore] = useState(false);
   const [smtpReady, setSmtpReady] = useState(false);
   const [mode, setMode] = useState("oauth");
   const [email, setEmail] = useState("");
@@ -37,6 +88,7 @@ export default function AuthModal({ open, onClose }) {
     if (!open) return;
     setErr("");
     setMsg("");
+    setShowMore(false);
     api("/api/auth/config", { silent: true })
       .then((c) => {
         setOauth(c.oauth || []);
@@ -127,23 +179,50 @@ export default function AuthModal({ open, onClose }) {
         </div>
       )}
 
-      {mode === "oauth" && (
-        <div className="space-y-2">
-          {oauth.map((type) => (
-            <button
-              key={type}
-              onClick={() => startOauth(type)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:border-primary/40 hover:text-primary"
-            >
-              {type === "qq" ? <QQIcon /> : <WeChatIcon />}
-              {OAUTH_LABELS[type] || type}
-            </button>
-          ))}
-          <p className="pt-1 text-center text-[11px] leading-relaxed text-muted-foreground">
-            {t("auth.oauthHint")}
-          </p>
-        </div>
-      )}
+      {mode === "oauth" &&
+        (() => {
+          const rank = (x) => {
+            const i = PRIMARY_OAUTH.indexOf(x);
+            return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+          };
+          const sorted = [...oauth].sort((a, b) => rank(a) - rank(b));
+          const primary = sorted.filter((x) => rank(x) !== Number.MAX_SAFE_INTEGER);
+          const rest = sorted.filter((x) => rank(x) === Number.MAX_SAFE_INTEGER);
+          const btn = (type) => {
+            const Icon = OAUTH_ICONS[type];
+            return (
+              <button
+                key={type}
+                onClick={() => startOauth(type)}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:border-primary/40 hover:text-primary"
+              >
+                {Icon ? <Icon className="h-5 w-5" /> : null}
+                {OAUTH_LABELS[type] || type}
+              </button>
+            );
+          };
+          return (
+            <div className="max-h-[65vh] space-y-2 overflow-y-auto">
+              {primary.map(btn)}
+              {rest.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowMore((v) => !v)}
+                    className="flex w-full items-center justify-center gap-1 rounded-lg px-4 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showMore ? t("auth.collapse") : t("auth.more")}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} />
+                  </button>
+                  {showMore && <div className="space-y-2">{rest.map(btn)}</div>}
+                </>
+              )}
+              <p className="pt-1 text-center text-[11px] leading-relaxed text-muted-foreground">
+                {t("auth.oauthHint")}
+              </p>
+            </div>
+          );
+        })()}
 
       {mode === "email" && (
         <form onSubmit={submitEmail} className="space-y-3">

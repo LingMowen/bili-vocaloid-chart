@@ -354,7 +354,9 @@ function RankChart({ records, active, log, labels }) {
           const arr = Array.isArray(params) ? params : [params];
           const r = arr[0] ? points[arr[0].dataIndex] : null;
           if (!r) return "";
-          let html = `<div style="font-weight:bold;margin-bottom:8px">${r.date ? r.date : labels._issue(r.issue)}</div>`;
+          // 周榜记录带源站采集区间（date ~ date_end），单日记录只显示一个日期
+          const dateLabel = r.date ? (r.date_end && r.date_end !== r.date ? `${r.date} ~ ${r.date_end}` : r.date) : labels._issue(r.issue);
+          let html = `<div style="font-weight:bold;margin-bottom:8px">${dateLabel}</div>`;
           if (Number.isInteger(r.issue)) {
             html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0;color:#6b7280;font-size:11px"><span>${labels._issueLabel}</span><span style="font-weight:bold">${r.issue}</span></div>`;
           }
@@ -381,7 +383,10 @@ function RankChart({ records, active, log, labels }) {
       // 参考站趋势图无底部缩放滑块，去掉 dataZoom
       dataZoom: [],
       series,
-    });
+      // 关键：必须 notMerge。setOption 默认是「合并」而非替换——取消勾选后 series/yAxis
+      // 数组变短，旧的 series 不会被移除（表现为「取消不掉」），且 tooltip 里会残留
+      // keys[seriesIndex] 为 undefined 的幽灵条目（灰色 #6b7280）。
+    }, { notMerge: true });
   }, [records, active, log, labels]);
 
   return <div ref={ref} className="relative my-4 h-[300px]" />;
@@ -678,9 +683,9 @@ export default function VideoPage() {
                   <span className="text-sm text-muted-foreground">{t("video.uploader")}</span>
                 </div>
                 <div className="min-w-0 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => window.open(`https://space.bilibili.com/${v.owner?.mid}`, "_blank")}
+                  {/* 站内 P主主页（/member/:mid）；去 B站空间的外链在页面底部「UP主」区另有一处 */}
+                  <Link
+                    to={v.owner?.mid ? `/member/${v.owner.mid}` : "/search"}
                     className="group flex min-w-0 items-center gap-2.5 rounded-xl border p-2 transition hover:border-amber-300 hover:bg-amber-50/50 dark:hover:border-amber-700 dark:hover:bg-amber-950/30"
                   >
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-200 dark:bg-gray-700">
@@ -695,7 +700,7 @@ export default function VideoPage() {
                         {v.owner?.name}
                       </span>
                     </div>
-                  </button>
+                  </Link>
                 </div>
               </div>
               {/* 合作者 */}
@@ -994,9 +999,15 @@ export default function VideoPage() {
                           type="button"
                           onClick={() => toggleMetric(k)}
                           aria-pressed={on}
-                          className="flex flex-col items-center gap-1 rounded-lg border bg-muted/30 p-2"
+                          className={`flex flex-col items-center gap-1 rounded-lg border p-2 transition ${
+                            on
+                              ? "border-primary/50 bg-primary/5"
+                              : "border bg-muted/30 opacity-55 hover:opacity-100"
+                          }`}
                         >
-                          <span className="text-[10px] text-muted-foreground">{t(key)}</span>
+                          <span className={`text-[10px] ${on ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+                            {t(key)}
+                          </span>
                           <Sparkline
                             values={[...chartRec].reverse().map((r) => (k === "rank" ? r.rank : r[k] ?? 0))}
                             color={color}

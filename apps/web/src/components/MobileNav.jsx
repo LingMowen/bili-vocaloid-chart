@@ -9,8 +9,6 @@ import {
   BarChart3,
   Trophy,
   CalendarClock,
-  Vote,
-  BotMessageSquare,
   BookOpen,
   Shuffle,
   MicVocal,
@@ -26,8 +24,6 @@ export const QUICK_NAV = [
   ["/stats", "nav.stats", BarChart3],
   ["/achievements", "nav.achievements", Trophy],
   ["/today", "nav.today", CalendarClock],
-  ["/interaction", "nav.nominate", Vote],
-  ["/ai", "nav.ai", BotMessageSquare],
   ["/about", "nav.about", BookOpen],
   ["/random", "nav.random", Shuffle],
 ];
@@ -42,17 +38,24 @@ export const SIDEBAR_PREFIXES = [
   "/stats",
   "/achievements",
   "/today",
-  "/interaction",
-  "/ai",
   "/about",
   "/random",
   "/tags",
 ];
 
+// 2026-09-30（用户拍板）：凡是【能从侧边栏点进去的页面】都必须显示侧边栏。
+// 即 SIDEBAR_PREFIXES 与 QUICK_NAV 必须保持一致——QUICK_NAV 里出现的路由一律要在
+// SIDEBAR_PREFIXES 中，否则会出现「侧边栏能进、进去后侧边栏消失」的跳变。
+// 此前曾为对齐 vocabili 榜单页（其榜单页无左栏）而把 /rank 排除，已按用户要求撤回。
 export function isSidebarRoute(pathname) {
   if (pathname === "/") return true;
-  return SIDEBAR_PREFIXES.some(
-    (p) => p !== "/" && (pathname === p || pathname.startsWith(`${p}/`)),
+  // QUICK_NAV 里能点到的路由，其一级前缀自动纳入，保证「侧边栏能进 ⇒ 进去后还在」
+  const prefixes = new Set([
+    ...SIDEBAR_PREFIXES,
+    ...QUICK_NAV.map(([to]) => `/${String(to).split("/")[1]}`),
+  ]);
+  return [...prefixes].some(
+    (p) => p && p !== "/" && (pathname === p || pathname.startsWith(`${p}/`)),
   );
 }
 

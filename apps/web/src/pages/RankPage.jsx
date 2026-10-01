@@ -146,9 +146,12 @@ function GridCard({ item, rank, external, singerIds = {} }) {
         >
           {rank + 1}
         </div>
-        <div className="pointer-events-none absolute right-2 top-2 rounded-lg bg-amber-500 px-2 py-0.5 text-xs font-bold text-white shadow-lg xs:right-3 xs:top-3 xs:px-2.5 xs:py-1 xs:text-sm">
-          {t("rank.streak", { n: listedCount })}
-        </div>
+        {/* 2026-09-30：首次上榜（n<=1）不显示该徽章，只有第 2 次及以后才显示「N次上榜」 */}
+        {listedCount >= 2 && (
+          <div className="pointer-events-none absolute right-2 top-2 rounded-lg bg-amber-500 px-2 py-0.5 text-xs font-bold text-white shadow-lg xs:right-3 xs:top-3 xs:px-2.5 xs:py-1 xs:text-sm">
+            {t("rank.streak", { n: listedCount })}
+          </div>
+        )}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent px-2 pb-2 pt-6 xs:px-3 xs:pb-3 xs:pt-8">
           <div className="flex items-end justify-end">
             <span className="text-xl font-bold text-white xs:text-2xl">{fmt(item.score ?? 0)}</span>
@@ -501,7 +504,10 @@ export default function RankPage() {
         </div>
 
         <aside className="hidden lg:block">
-          <div className="sticky top-20 max-h-[calc(100vh-5rem)] space-y-4 overflow-y-auto pr-1">
+          {/* 2026-09-30：top-20 会把侧栏初始位置强推到滚动容器顶部下方 80px（我们头部固定、
+              内容区独立滚动，自然位置只有 ~16px），导致侧栏比主内容标题卡低 ~56px。
+              改 top-4 与原站视觉一致：初始对齐标题卡，滚动后吸附在头部正下方。 */}
+          <div className="sticky top-4 max-h-[calc(100vh-6.5rem)] space-y-4 overflow-y-auto pr-1">
             <div className="overflow-hidden rounded-2xl border bg-card">
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">

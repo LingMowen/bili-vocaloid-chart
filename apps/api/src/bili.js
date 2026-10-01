@@ -79,6 +79,10 @@ async function fetchVideo(idParam) {
     return { ok: false, code: view?.code ?? -1, message: view?.message ?? "request failed" };
   }
   const data = view.data;
+  // 修 bug：下面 getVideoTags/getVideoPages 用的 aid 此前从未定义（ReferenceError），
+  // 导致 tags/pages 永远抓不到 → collector 的 tagHit() 只能靠标题判定，收录率被低估。
+  // idParam 可能是 {aid} 也可能是 {bvid}，统一用详情返回的 aid（bvid 场景也能拿到）。
+  const aid = data.aid ?? idParam.aid ?? null;
 
   let tags = [];
   let pages = [];

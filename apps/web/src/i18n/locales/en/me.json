@@ -1,0 +1,17 @@
+{
+  "title": "Me",
+  "notLoggedIn": "Not signed in",
+  "loginHint": "Sign in to sync comments and preferences",
+  "joinedAt": "Joined",
+  "myComments": "My comments",
+  "loadingComments": "Loading comments…",
+  "commentsEmpty": "No comments yet",
+  "commentsEmptyHint": "Say something on a video page",
+  "commentsLoadFailed": "Failed to load comments",
+  "unknownVideo": "Unknown video",
+  "appearance": "Appearance",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "language": "Language",
+  "more": "More"
+}

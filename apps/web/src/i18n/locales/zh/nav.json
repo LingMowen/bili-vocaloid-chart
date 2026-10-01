@@ -25,17 +25,12 @@
   "stats": "统计",
   "random": "随机跳转",
   "tags": "标签",
-  "interaction": "互动",
-  "songRequest": "点歌",
-  "nominate": "提名",
-  "avatarSubmit": "头像投稿",
   "today": "历史上的今天",
-  "ai": "数据姬",
   "about": "关于",
   "loginOrRegister": "登录 / 注册",
   "navGroupRank": "排行",
   "navGroupTools": "工具",
-  "navGroupInteract": "互动",
   "profile": "我的主页",
+  "me": "我的",
   "closeNav": "关闭菜单"
 }

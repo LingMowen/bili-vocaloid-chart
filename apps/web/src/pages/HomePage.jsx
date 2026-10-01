@@ -41,37 +41,6 @@ function useBoard(kind, order, ps = 20, period = "daily") {
   return [q.data, q.error?.message, q.isLoading];
 }
 
-function EdBanner() {
-  const { t } = useTranslation();
-  return (
-    <a
-      href="#/interaction"
-      className="group flex min-h-11 items-center justify-between gap-2 overflow-hidden rounded-lg border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-sky-950 shadow-sm transition hover:border-sky-300 hover:bg-sky-100/80 dark:border-sky-800/60 dark:bg-sky-950/35 dark:text-sky-50 dark:hover:border-sky-700 dark:hover:bg-sky-900/35"
-    >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sky-500/12 text-sky-600 dark:bg-sky-400/15 dark:text-sky-300">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0" aria-hidden="true">
-            <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" />
-            <path d="M20 2v4M22 4h-4" />
-            <circle cx="4" cy="20" r="2" />
-          </svg>
-        </div>
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5 text-sm">
-            <span className="shrink-0 font-semibold">{t("home.edNominating")}</span>
-            <span className="min-w-0 truncate text-sky-700/85 dark:text-sky-200/80">· {t("home.edNominatingDesc")}</span>
-          </div>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1 text-xs font-semibold text-sky-700 transition group-hover:translate-x-0.5 group-hover:text-sky-900 dark:text-sky-300 dark:group-hover:text-sky-100">
-        <span>{t("home.goNominate")}</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </div>
-    </a>
-  );
-}
 
 function MiniHero({ item, rank }) {
   const girls = item.girls || [];
@@ -149,13 +118,16 @@ function DailyPicks() {
   );
 }
 
+// 与 vocabili 同款配色（同时用于成就页 / 榜单徽章）
 const ACH_COLORS = {
-  superhit: "#7C3AED",
-  monban: "#12763a",
-  myth: "#B45309",
-  annual_top: "#0E7490",
+  emerging_hit: "#6A0DAD",
+  mega_hit: "#CCA300",
+  potential_regular: "#23AFA4",
+  regular: "#127436",
+  daily_regular: "#127436",
+  daily_potential_regular: "#23AFA4",
 };
-const ACH_ORDER = ["superhit", "monban", "myth", "annual_top"];
+const ACH_ORDER = ["emerging_hit", "mega_hit", "potential_regular", "regular"];
 
 function useAchievements(board, type, pageSize = 6) {
   const q = useQuery({
@@ -165,10 +137,11 @@ function useAchievements(board, type, pageSize = 6) {
   return [q.data, q.error?.message, q.isLoading];
 }
 
-// 首页「成就」卡片：展示新四类永久成就（SUPERHIT / 门番 / 神话 / 年榜首位）
+// 首页「成就」卡片：展示 vocabili 四类永久成就
+// （Emerging Hit! / Mega Hit!!! / 门番候补 / 门番）
 function AchieveCard({ board }) {
   const { t } = useTranslation();
-  const [type, setType] = useState("superhit");
+  const [type, setType] = useState("emerging_hit");
   const [data, err, loading] = useAchievements(board, type, 6);
   const items = data?.data ?? [];
   const issue = data?.issue;
@@ -434,7 +407,7 @@ function HistoryToday() {
 export default function HomePage() {
   return (
     <div className="space-y-7">
-      <EdBanner />
+      {/* 2026-09-30：提名功能（/interaction）已删除，首页「ED 提名」横幅一并移除 */}
       <DailyPicks />
       <WeeklySection />
       <div className="grid min-w-0 items-stretch gap-4 md:gap-6 lg:grid-cols-5">

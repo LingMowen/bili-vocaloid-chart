@@ -6,6 +6,7 @@ const config = require("./config");
 const { stmts, findUser } = require("./db");
 
 const OAUTH_TYPES = config.cccyun.types || ["qq", "wx"];
+const OAUTH_STATE_COOKIE = "oauth_state";
 const CODE_TTL_MS = 5 * 60 * 1000;
 const CODE_RESEND_MS = 60 * 1000;
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -63,6 +64,21 @@ function verifyState(type, state) {
     .update(`${type}:${ts}`)
     .digest("hex");
   return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect));
+}
+
+// 不引入 cookie-parser，手动解析即可（只需读一个自建 cookie）
+function parseCookies(header) {
+  const out = {};
+  for (const part of String(header || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      /* 忽略非法编码 */
+    }
+  }
+  return out;
 }
 
 function cccyunGet(params) {
@@ -155,7 +171,20 @@ function makeRouter() {
       if (!arr || arr.code !== 0 || !arr.url) {
         return res.status(502).json({ ok: false, message: (arr && arr.msg) || "获取授权地址失败" });
       }
-      res.json({ ok: true, data: { url: `${arr.url}${arr.url.includes("?") ? "&" : "?"}state=${state}` } });
+      // state 改用 cookie 携带，不再拼到 URL 上：
+      // cc云返回的 url 里已带它自己的 state（用于 return.php 找回回调地址），
+      // 若再追加同名参数会出现两个 state，回调端取到的是 cc云的，我们自己的签名校验必然失败。
+      res.setHeader(
+        "Set-Cookie",
+        `${OAUTH_STATE_COOKIE}=${encodeURIComponent(`${type}:${state}`)}; Path=/; Max-Age=600; SameSite=Lax`,
+      );
+      // 默认 302 直跳授权页：前端走的是 window.location.href 整页导航，
+      // 返回 JSON 会让浏览器把接口报文当页面渲染（点登录只看到一段 JSON，不弹授权页）。
+      // 需要程序化取 URL 时加 ?format=json。
+      if (String(req.query.format || "") === "json") {
+        return res.json({ ok: true, data: { url: arr.url } });
+      }
+      return res.redirect(arr.url);
     } catch (e) {
       next(e);
     }
@@ -165,7 +194,15 @@ function makeRouter() {
     try {
       const type = String(req.query.type || "");
       const { code, state } = req.query;
-      if (!OAUTH_TYPES.includes(type) || !code || !verifyState(type, String(state))) {
+      // 优先用 URL 上带回的 state，取不到时回退到登录时写入的 cookie
+      const jar = parseCookies(req.headers.cookie);
+      const [cType, cState] = String(jar[OAUTH_STATE_COOKIE] || "").split(":");
+      const stateOk =
+        verifyState(type, String(state || "")) ||
+        (cType === type && verifyState(type, String(cState || "")));
+      // state 一次性：无论成败都清掉，避免重放
+      res.setHeader("Set-Cookie", `${OAUTH_STATE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`);
+      if (!OAUTH_TYPES.includes(type) || !code || !stateOk) {
         return res.status(400).send("回调校验失败，请重新登录");
       }
       const arr = await cccyunCallback(type, String(code));

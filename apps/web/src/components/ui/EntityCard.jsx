@@ -1,3 +1,4 @@
+import { cloneElement, isValidElement } from "react";
 import { Link } from "react-router-dom";
 import { Music } from "lucide-react";
 
@@ -73,5 +74,13 @@ export function EntityCardGrid({ items, render, empty, grid = ENTITY_GRID_WIDE }
   if (!items?.length) {
     return empty ? <p className="text-sm text-muted-foreground">{empty}</p> : null;
   }
-  return <div className={grid}>{items.map((it, i) => render(it, i))}</div>;
+  // 调用方传的 render() 通常不写 key，这里统一补上（缺失时 React 会告警并影响列表复用）。
+  return (
+    <div className={grid}>
+      {items.map((it, i) => {
+        const node = render(it, i);
+        return isValidElement(node) && node.key == null ? cloneElement(node, { key: i }) : node;
+      })}
+    </div>
+  );
 }

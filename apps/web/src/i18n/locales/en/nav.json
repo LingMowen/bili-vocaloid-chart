@@ -25,17 +25,12 @@
   "stats": "Stats",
   "random": "Random",
   "tags": "Tags",
-  "interaction": "Interact",
-  "songRequest": "Request",
-  "nominate": "Nominate",
-  "avatarSubmit": "Submit avatar",
   "today": "On this day",
-  "ai": "AI bot",
   "about": "About",
   "loginOrRegister": "Login / Register",
   "navGroupRank": "Rankings",
   "navGroupTools": "Tools",
-  "navGroupInteract": "Interact",
   "profile": "My profile",
+  "me": "Me",
   "closeNav": "Close menu"
 }

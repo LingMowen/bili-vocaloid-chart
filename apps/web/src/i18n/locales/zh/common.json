@@ -12,5 +12,9 @@
   "copied": "已复制",
   "retry": "重试",
   "loading": "加载中…",
-  "database": "术力口数据库"
+  "database": "术力口数据库",
+  "chunkErrorTitle": "页面加载失败",
+  "chunkErrorDesc": "网络或浏览器缓存异常导致页面资源加载失败，重新加载通常可以恢复。",
+  "reload": "重新加载",
+  "backHome": "返回首页"
 }

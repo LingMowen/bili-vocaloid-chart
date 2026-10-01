@@ -34,10 +34,6 @@ import zhSinger from "./locales/zh/singer.json";
 import enSinger from "./locales/en/singer.json";
 import zhRandom from "./locales/zh/random.json";
 import enRandom from "./locales/en/random.json";
-import zhInteraction from "./locales/zh/interaction.json";
-import enInteraction from "./locales/en/interaction.json";
-import zhAi from "./locales/zh/ai.json";
-import enAi from "./locales/en/ai.json";
 import zhAbout from "./locales/zh/about.json";
 import enAbout from "./locales/en/about.json";
 import zhComments from "./locales/zh/comments.json";
@@ -46,6 +42,8 @@ import zhAuth from "./locales/zh/auth.json";
 import enAuth from "./locales/en/auth.json";
 import zhUser from "./locales/zh/user.json";
 import enUser from "./locales/en/user.json";
+import zhMe from "./locales/zh/me.json";
+import enMe from "./locales/en/me.json";
 
 export const LANG_KEY = "xngschina-lang";
 
@@ -68,12 +66,11 @@ const resources = {
     singers: zhSingers,
     singer: zhSinger,
     random: zhRandom,
-    interaction: zhInteraction,
-    ai: zhAi,
     about: zhAbout,
     comments: zhComments,
     auth: zhAuth,
     user: zhUser,
+    me: zhMe,
   },
   en: {
     common: enCommon,
@@ -93,12 +90,11 @@ const resources = {
     singers: enSingers,
     singer: enSinger,
     random: enRandom,
-    interaction: enInteraction,
-    ai: enAi,
     about: enAbout,
     comments: enComments,
     auth: enAuth,
     user: enUser,
+    me: enMe,
   },
 };
 

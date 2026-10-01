@@ -19,7 +19,7 @@
     { "name": "Data charts", "desc": "Historical board performance, growth trends and rank statistics." },
     { "name": "Search", "desc": "Global search by title, producer, vocalist or synthesizer.", "to": "/search" },
     { "name": "Score calculator", "desc": "Enter a video's metrics to estimate its score online.", "to": "/calculator" },
-    { "name": "Achievements", "desc": "Permanent achievements: SUPERHIT, Monban, Myth, Annual #1.", "to": "/achievements" },
+    { "name": "Achievements", "desc": "Permanent achievements: Emerging Hit!, Mega Hit!!!, Gatekeeper candidate, Gatekeeper (incl. daily).", "to": "/achievements" },
     { "name": "Vocalists", "desc": "Songs, synthesizers and frequent producers grouped by vocalist.", "to": "/singers" },
     { "name": "Daily digest", "desc": "New entries and daily increments at a glance.", "to": "/today" },
     { "name": "Interaction board", "desc": "Ranking by comments, danmaku and other interaction metrics.", "to": "/interaction" },
@@ -117,10 +117,12 @@
     {
       "name": "Permanent achievements",
       "items": [
-        { "name": "SUPERHIT (SH)", "desc": "Reach: top 3 on the main board twice in total", "color": "#6A0DAD" },
-        { "name": "Annual #1", "desc": "Reach: become the annual board's #1 for the first time", "color": "#CCA300" },
-        { "name": "Monban", "desc": "Reach: on the main board 20 of 28 issues, or 30 of 50, without 8 consecutive misses", "color": "#127436" },
-        { "name": "Myth", "desc": "Reach: total views exceed ten million", "color": "#23AFA4" }
+        { "name": "Emerging Hit!", "desc": "Reach: top 5 of the main board for 3 consecutive issues", "color": "#6A0DAD" },
+        { "name": "Mega Hit!!!", "desc": "Reach: top 3 of the main board for 5 consecutive issues", "color": "#CCA300" },
+        { "name": "Gatekeeper candidate", "desc": "Reach: 10 of the last 15 issues in the top 20", "color": "#23AFA4" },
+        { "name": "Gatekeeper", "desc": "Reach: 20 of the last 30 issues in the top 20", "color": "#127436" },
+        { "name": "Daily gatekeeper candidate", "desc": "Reach: 10 of the last 15 daily issues in the top 20", "color": "#23AFA4" },
+        { "name": "Daily gatekeeper", "desc": "Reach: 20 of the last 30 daily issues in the top 20", "color": "#127436" }
       ]
     },
     {

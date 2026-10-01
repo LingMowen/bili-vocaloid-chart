@@ -7,19 +7,48 @@ const collector = require("./collector");
 const services = require("./services");
 const statHistory = require("./statHistory");
 const vocabili = require("./vocabili");
+const vocabiliSync = require("./vocabiliSync");
 const { canonicalGirl, canonicalGirls, aliasesOf, expandNames } = require("./girls");
 const config = require("./config");
 const progress = require("./progress");
 const related = require("./related");
 const evoStats = require("./evoStats");
 const evocalrank = require("./evocalrank");
+const boardIndex = require("./boardIndex");
 const { makeRouter: makeAuthRouter, requireAuth, publicUser } = require("./auth");
 const { db, stmts } = require("./db");
 
 const app = express();
 
+// ---- BV 号 ⇄ aid 互转（B站公开算法，纯本地换算，不发网络请求）----
+const BV_DATA = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf";
+const BV_XOR = 23442827791579n;
+const BV_MASK = 2251799813685247n;
+const BV_BASE = 58n;
+
+function bv2av(bvid) {
+  const a = Array.from(String(bvid || ""));
+  if (a.length !== 12) return null;
+  [a[3], a[9]] = [a[9], a[3]];
+  [a[4], a[7]] = [a[7], a[4]];
+  let tmp = 0n;
+  for (const ch of a.slice(3)) {
+    const idx = BV_DATA.indexOf(ch);
+    if (idx < 0) return null;
+    tmp = tmp * BV_BASE + BigInt(idx);
+  }
+  return Number((tmp & BV_MASK) ^ BV_XOR);
+}
+
 function parseId(raw, name) {
-  const n = Number(raw);
+  const s = String(raw == null ? "" : raw).trim();
+  // 允许直接传 BV 号（/video/BV1xxxx 或粘贴 B站链接里的 BV 号），换算成 aid 后走原逻辑
+  const bv = s.match(/^BV[0-9A-Za-z]{10}$/);
+  if (bv) {
+    const aid = bv2av(bv[0]);
+    return Number.isSafeInteger(aid) && aid > 0 ? aid : null;
+  }
+  const n = Number(s);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
@@ -41,6 +70,34 @@ async function wrap(req, res, next, fn) {
 }
 
 app.use(express.json());
+
+// ---- 响应 gzip（内置 zlib，避免额外依赖）----
+// /api/girls 572KB、/api/tags 524KB 这类大响应不压缩会拖慢首屏，尤其是非本地访问。
+const zlib = require("node:zlib");
+const GZIP_MIN_BYTES = 8 * 1024;
+app.use((req, res, next) => {
+  if (!String(req.headers["accept-encoding"] || "").includes("gzip")) return next();
+  const origJson = res.json.bind(res);
+  res.json = (obj) => {
+    let buf;
+    try {
+      buf = Buffer.from(JSON.stringify(obj), "utf8");
+    } catch {
+      return origJson(obj);
+    }
+    if (buf.length < GZIP_MIN_BYTES) return origJson(obj);
+    zlib.gzip(buf, { level: 5 }, (err, gz) => {
+      if (err || !gz) return origJson(obj);
+      res.setHeader("Content-Encoding", "gzip");
+      res.setHeader("Vary", "Accept-Encoding");
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Length", gz.length);
+      res.end(gz);
+    });
+  };
+  next();
+});
+
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -57,10 +114,52 @@ app.use((req, res, next) => {
   next();
 });
 
+/**
+ * 视频详情短期缓存。
+ *
+ * bili.video() 每次都要打 B 站 3 个接口（view / tags / pages），且 call() 内
+ * 有 150ms 串行节流 → 单发稳定 400~700ms，是视频页（6 接口并发）最大的剩余热点。
+ * 稿件详情（标题/简介/时长/tags/pages/staff）分钟级不会变，只有 stat 会持续增长，
+ * 因此缓存 5 分钟：足以覆盖用户反复进出同一视频页与刷新，又不至于让播放量明显陈旧。
+ *
+ * 只缓存成功结果；失败（ok:false）不缓存，保证上游抖动后可立即重试。
+ */
+const VIDEO_TTL = 5 * 60 * 1000;
+const VIDEO_CACHE_MAX = 300; // 上限防内存无界增长（LRU：命中即续期）
+const videoCache = new Map();
+
+function videoCacheGet(aid) {
+  const hit = videoCache.get(String(aid));
+  if (!hit) return null;
+  if (Date.now() - hit.at > VIDEO_TTL) {
+    videoCache.delete(String(aid));
+    return null;
+  }
+  // 续期 + 移到队尾，维持 LRU 顺序
+  videoCache.delete(String(aid));
+  videoCache.set(String(aid), hit);
+  return hit.data;
+}
+
+function videoCacheSet(aid, data) {
+  const key = String(aid);
+  videoCache.delete(key);
+  videoCache.set(key, { at: Date.now(), data });
+  while (videoCache.size > VIDEO_CACHE_MAX) {
+    videoCache.delete(videoCache.keys().next().value);
+  }
+}
+
 app.get("/api/video/:aid", (req, res, next) => {
   const aid = parseId(req.params.aid, "aid");
   if (!aid) return fail(res, 400, "invalid aid");
-  wrap(req, res, next, () => bili.video(aid));
+  const cached = videoCacheGet(aid);
+  if (cached) return res.json(cached);
+  wrap(req, res, next, async () => {
+    const r = await bili.video(aid);
+    if (r && r.ok) videoCacheSet(aid, r);
+    return r;
+  });
 });
 
 /**
@@ -228,10 +327,50 @@ app.get("/api/vocalist/:id/producers", (req, res, next) => {
   });
 });
 
-const searchVideos = (keyword, page, sort) => {
+// 从任意文本识别视频引用：完整 URL / 裸 BV 号 / av 号。
+// 用户习惯直接粘贴链接，若不提取会 0 结果并被误判为「解析失败」。
+const BV_RE = /BV[0-9A-Za-z]{10}/;
+const AV_RE = /(?:^|[^\w])av(\d{1,15})(?![0-9])/i;
+
+function extractVideoRef(text) {
+  const m = String(text || "").match(BV_RE);
+  if (m) return { bvid: m[0] };
+  const a = String(text || "").match(AV_RE);
+  if (a) {
+    const n = Number(a[1]);
+    if (Number.isSafeInteger(n) && n > 0) return { aid: n };
+  }
+  return null;
+}
+
+// b23.tv 短链无法本地解析，需跟随重定向；仅在确实含短链时才发请求，失败一律回落关键词搜索。
+async function resolveShortLink(text) {
+  const m = String(text || "").match(/b23\.tv\/[A-Za-z0-9]+/i);
+  if (!m) return null;
+  try {
+    const r = await fetch(`https://${m[0]}`, {
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    return extractVideoRef(r.url || "");
+  } catch {
+    return null;
+  }
+}
+
+const searchVideos = (keyword, page, sort, ref) => {
   const d = readCached("evostats.json");
   const ps = 20;
   if (d && Array.isArray(d.list)) {
+    let out;
+    if (ref) {
+      // 精确命中：链接/BV/av 直达，不再走关键词包含匹配
+      out = d.list.filter((it) => (ref.bvid ? it.bvid === ref.bvid : String(it.aid) === String(ref.aid)));
+    } else {
     const q = keyword.toLowerCase();
     // 歌姬匹配需带上别名：库里存的是标准名「初音未来」，但用户可能搜 miku / 初音ミク。
     // 查询词也走 expandNames：搜「镜音双子」应同时命中 镜音铃 与 镜音连 的曲子。
@@ -242,12 +381,13 @@ const searchVideos = (keyword, page, sort) => {
         if (qTargets.includes(c)) return true;
         return aliasesOf(g).some((a) => String(a).toLowerCase().includes(q));
       });
-    const out = d.list.filter((it) =>
+    out = d.list.filter((it) =>
       (it.title || "").toLowerCase().includes(q) ||
       (it.owner?.name || "").toLowerCase().includes(q) ||
       girlHit(it.girls) ||
       (it.tags || []).some((tg) => String(tg).toLowerCase().includes(q)),
     );
+    }
     if (sort === "view") out.sort((a, b) => (b.view || 0) - (a.view || 0));
     else if (sort === "pubdate") out.sort((a, b) => (b.pubdate || 0) - (a.pubdate || 0));
     const start = (page - 1) * ps;
@@ -274,7 +414,8 @@ const searchVideos = (keyword, page, sort) => {
 };
 
 app.get("/api/search", async (req, res, next) => {
-  const keyword = String(req.query.keyword || "").trim().slice(0, 50);
+  const rawKeyword = String(req.query.keyword || "").trim();
+  const keyword = rawKeyword.slice(0, 50);
   if (!keyword) return fail(res, 400, "missing keyword");
   const rawType = String(req.query.type || "video");
   const type = rawType === "all" ? "all" : rawType === "user" ? "bili_user" : "video";
@@ -284,8 +425,12 @@ app.get("/api/search", async (req, res, next) => {
     return fail(res, 400, `page 需在 1-${config.searchMaxPage}`);
   }
   try {
+    // 粘贴链接 / 裸 BV / av 号时先精确直达；未命中再回落关键词搜索。
+    // 从 rawKeyword 提取（未截断版），避免带参数的完整链接被 slice(0,50) 切掉 BV 号。
+    let ref = extractVideoRef(rawKeyword.slice(0, 200));
+    if (!ref) ref = await resolveShortLink(rawKeyword.slice(0, 200));
     if (type === "all") {
-      const videos = await searchVideos(keyword, page, sort);
+      const videos = await searchVideos(keyword, page, sort, ref);
       const users = await services.searchOwners(keyword, page);
       return res.json({
         ok: true,
@@ -298,7 +443,7 @@ app.get("/api/search", async (req, res, next) => {
         },
       });
     }
-    const d = await searchVideos(keyword, page, sort);
+    const d = await searchVideos(keyword, page, sort, ref);
     return res.json({ ok: true, data: { ...d, sort } });
   } catch (e) {
     return next(e);
@@ -397,12 +542,23 @@ function archiveBoard(period, data) {
 }
 
 // 内存缓存：避免每次请求都读盘。refreshCache 更新后同步覆盖。
+// 注意条目结构为 { mtimeMs, data }：采集器/外部脚本会直接改写缓存文件，
+// 只按「有没有」判断会导致 API 一直吐旧数据，故用文件 mtime 做失效依据。
 const memCache = new Map();
 
 function readCached(name) {
-  if (memCache.has(name)) return memCache.get(name);
+  let mtimeMs = 0;
+  try {
+    mtimeMs = fs.statSync(cachePath(name)).mtimeMs;
+  } catch {
+    // 文件暂不存在：有旧缓存就先沿用，没有则 null
+    const stale = memCache.get(name);
+    return stale ? stale.data : null;
+  }
+  const hit = memCache.get(name);
+  if (hit && hit.mtimeMs === mtimeMs) return hit.data;
   const d = readCache(name);
-  if (d) memCache.set(name, d);
+  if (d) memCache.set(name, { mtimeMs, data: d });
   return d;
 }
 
@@ -478,6 +634,40 @@ async function syncEvo() {
   } catch (e) {
     console.error(`[evo] 同步失败: ${e.message}`);
   }
+}
+
+// vocabili 日刊同步（一天一次）：只拉最新日刊 → 四量落盘 → 缺失 bvid 入待抓队列。
+// 周刊/月刊/年刊由本站自算，不在此抓取。
+async function syncVocabili() {
+  try {
+    const r = await vocabiliSync.syncDaily();
+    console.log(
+      `[vocabili] 日刊同步完成：期号 ${r.latest} 条目 ${r.rows}，` +
+        `四量落盘 ${r.meta_written} 条，待抓队列新增 ${r.pending_added}` +
+        `（已在库跳过 ${r.pending_skipped_in_library}，去重跳过 ${r.pending_skipped_dup}）`,
+    );
+  } catch (e) {
+    console.error(`[vocabili] 日刊同步失败: ${e.message}`);
+  }
+}
+
+// 每天定点（hour:00）执行一次 fn，之后每 24h 循环。用于 vocabili 日刊：
+// 日刊站点凌晨 3 点更新，4 点抓取确保拿到新一期，避免抓到未更新的旧数据。
+function scheduleDailyAt(hour, fn) {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(hour, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const delay = next - now;
+  setTimeout(() => {
+    try {
+      fn();
+    } catch (e) {
+      console.error(`[scheduleDaily ${hour}:00] 执行失败: ${e.message}`);
+    }
+    setInterval(fn, 24 * 3600 * 1000);
+  }, delay);
+  console.log(`[schedule] ${fn.name || "task"} 排程每天 ${hour}:00 执行（首跑延迟 ${Math.round(delay / 1000)}s）`);
 }
 
 // 全库派生数据（evostats/tags/girls/stats）低频后台刷新，失败保留旧缓存
@@ -742,12 +932,9 @@ app.get("/api/stats", (req, res, next) => {
   if (d) return res.json({ ok: true, data: d });
   wrap(req, res, next, async () => ({ ok: true, data: await services.stats() }));
 });
+// services.girls() 自带进程内 TTL 缓存，且只在真正重算时回写 girls.json
 app.get("/api/girls", (req, res, next) => {
-  wrap(req, res, next, async () => {
-    const d = await services.girls();
-    writeCache("girls.json", d);
-    return { ok: true, data: d };
-  });
+  wrap(req, res, next, async () => ({ ok: true, data: await services.girls() }));
 });
 app.get("/api/singers", (req, res, next) => {
   const d = readCached("singers.json");
@@ -978,8 +1165,10 @@ function publicComment(c, users) {
 }
 
 app.get("/api/video/:aid/comments", (req, res, next) => {
-  const aid = String(req.params.aid || "");
-  if (!/^\d+$/.test(aid)) return fail(res, 400, "invalid aid");
+  // 走 parseId 以同时支持数字 aid 与 BV 号（评论区在视频页内，路径一致才不会 400）
+  const aidNum = parseId(req.params.aid, "aid");
+  if (!aidNum) return fail(res, 400, "invalid aid");
+  const aid = String(aidNum);
   const page = Number(req.query.page) || 1;
   const pageSize = Math.min(Number(req.query.page_size) || 20, 50);
   if (page < 1 || pageSize < 1) return fail(res, 400, "invalid paging");
@@ -1021,8 +1210,9 @@ app.get("/api/video/:aid/comments", (req, res, next) => {
 });
 
 app.post("/api/video/:aid/comments", requireAuth, (req, res) => {
-  const aid = String(req.params.aid || "");
-  if (!/^\d+$/.test(aid)) return fail(res, 400, "invalid aid");
+  const aidNum = parseId(req.params.aid, "aid");
+  if (!aidNum) return fail(res, 400, "invalid aid");
+  const aid = String(aidNum);
   const content = String(req.body?.content || "").trim();
   const parentIdRaw = Number(req.body?.parent_id ?? 0);
   if (!content || content.length > 1000) return fail(res, 400, "评论内容需在 1-1000 字之间");
@@ -1047,6 +1237,35 @@ app.delete("/api/comments/:id", requireAuth, (req, res) => {
   if (!n) return fail(res, 404, "评论不存在或无权删除");
   stmts.deleteRepliesAll.run(id);
   res.json({ ok: true, data: { deleted: true } });
+});
+
+// 「我的」页：当前用户的评论列表（附带视频标题/封面，供前端直接渲染并可跳转）
+app.get("/api/me/comments", requireAuth, (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(Math.max(1, Number(req.query.page_size) || 20), 50);
+    const rows = stmts.listUserComments.all(req.user.id, pageSize, (page - 1) * pageSize);
+    const total = stmts.countUserComments.get(req.user.id).n;
+    // 标题从库缓存取，找不到就留空（前端退化为只显示 aid，不阻断列表）
+    const byAid = new Map();
+    for (const it of readCached("library.json")?.data || []) byAid.set(String(it.aid), it);
+    const list = rows.map((r) => {
+      const v = byAid.get(String(r.aid));
+      return {
+        id: r.id,
+        aid: r.aid,
+        parent_id: r.parent_id || 0,
+        content: r.content,
+        created_at: r.created_at,
+        video_title: v?.title || "",
+        video_pic: v?.pic || "",
+        bvid: v?.bvid || "",
+      };
+    });
+    res.json({ ok: true, data: { total, page, page_size: pageSize, list } });
+  } catch (e) {
+    next(e);
+  }
 });
 
 // ---- 进度推送 (SSE) ----
@@ -1141,10 +1360,15 @@ app.use((err, req, res, next) => {
 app.listen(config.port, () => {
   console.log(`api listening on http://localhost:${config.port}`);
   ensureCacheDir();
+  // 预热榜单档案索引（149MB 档案解析一次 ~1.2s），避免首个视频页请求撞上全量构建
+  boardIndex.warmup();
   refreshBoards();
   setTimeout(() => refreshLibrary(), 1500);
   setTimeout(() => syncEvo(), 3000);
-  setInterval(syncEvo, 6 * 3600 * 1000);
+  // evocalrank（中文周刊，每周更新）每 24 小时检查一次新期（原 6 小时过于频繁）
+  setInterval(syncEvo, 24 * 3600 * 1000);
+  // vocabili 日刊同步：每天凌晨 4 点定点抓取（日刊凌晨 3 点更新，4 点抓确保拿到新一期）
+  scheduleDailyAt(4, syncVocabili);
   // 启动独立后台 AI 审核 worker（解耦采集与审核：不阻塞采集、串行消化待审项）
   // AI_REVIEW_ENABLED=false 时不启动：此时 aiReview.check 走 fail-open 放行，且不请求上游
   if (config.aiReview.enabled) {

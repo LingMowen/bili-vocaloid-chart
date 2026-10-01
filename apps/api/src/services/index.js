@@ -1,6 +1,7 @@
 const collector = require("../collector");
 const statHistory = require("../statHistory");
 const evoStats = require("../evoStats");
+const boardIndex = require("../boardIndex");
 const { canonicalGirl, canonicalGirls } = require("../girls");
 const {
   ORDER_KEYS,
@@ -126,8 +127,31 @@ function scoreWindow(items, win, snapCache) {
   return map;
 }
 
+// 把一组增量按系数缩放：用于日榜把源站「7 天采集量」折算成日均增量。
+function scaleStat(s, k) {
+  const f = (v) => Math.round((Number(v) || 0) * k);
+  return {
+    view: f(s?.view),
+    favorite: f(s?.favorite),
+    coin: f(s?.coin),
+    danmaku: f(s?.danmaku),
+    like: f(s?.like),
+    reply: f(s?.reply),
+    share: f(s?.share),
+  };
+}
+
 // 排行榜数据（全库按增量窗口构建，缓存由 index.js 负责）
 // 期号从全库最早窗口起递增：最早期=1，昨天=2，今天=3（最新一期期号最大）
+// 秒级时间戳 → YYYY-MM-DD（本地时区）。用于把 evocalrank 每期的采集时间落到上榜记录上。
+function tsToDate(sec) {
+  if (sec == null) return null;
+  const d = new Date(Number(sec) * 1000);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 async function buildBoard(period, issue) {
   const nowDate = new Date();
   const curWin = windowOf(period, nowDate);
@@ -166,23 +190,50 @@ async function buildBoard(period, issue) {
   let baseSnap = statHistory.snapshotAt(baseKey);
   // 快照缺失（长周期或采集断层）时，回退用 evocalrank 周增量累加该窗口内每周增长。
   // 仅当 evo 数据确实覆盖该窗口（存在 generate/collectEnd 落在窗口内的期）才可回退。
-  let evoSums = null;
-  if (!baseSnap) {
-    evoSums = evoStats.sumWindow(win.startTs, win.endTs);
-    if (Object.keys(evoSums).length === 0) evoSums = null;
-  }
+  // 惰性加载：仅当确实有条目缺少基线时才计算（sumWindow 要遍历全部期，有开销）。
+  // 注意不能只按「快照文件是否存在」判断：快照存在但**不含某个 aid** 时，
+  // deltaStat 会把该 aid 的增量算成 0（见 statHistory.deltaStat 的 base ? … : 0 分支），
+  // 导致窗口内才被收录的新歌直接被 score<=0 剔除 —— 表现为「明明有数据却不上榜」。
+  let evoData = null;
+  let evoLoaded = false;
+  const ensureEvo = () => {
+    if (evoLoaded) return evoData;
+    evoLoaded = true;
+    const r = evoStats.sumWindowWithSource(win.startTs, win.endTs);
+    evoData = Object.keys(r.sums).length ? r : null;
+    return evoData;
+  };
   const list = [];
   for (const it of items) {
     if (!it.aid) continue;
     const isNewSong = it.pubdate && it.pubdate >= startTs && it.pubdate < endTs;
-    // 老歌：窗口起点前已存在，用增量计分；新歌：无基线，用当前值计分
+    const aidStr = String(it.aid);
+    // 基线是否覆盖该 aid：快照文件存在 ≠ 里面有这首歌。
+    // 缺基线时增量无法计算，回落 evocalrank 采集数据（只取它采集到的数值，名次仍由本站计算）。
+    const baseHasAid = !!(baseSnap && baseSnap[aidStr]);
+    const evo = baseHasAid ? null : ensureEvo();
+    const sums = evo && evo.sums;
+    const usedEvo = !isNewSong && !baseHasAid && !!(sums && Object.prototype.hasOwnProperty.call(sums, aidStr));
+    const evoSrc = usedEvo ? evo.sources?.[aidStr] : null;
+    // 源站一期是「跨 7 天的周采集量」（如 738 期 = 09-19 ~ 09-26）。
+    // 周/月榜直接取窗口内各期合计值即可；日榜窗口只有 1 天，照搬会把 7 天量当成 1 天增量、
+    // 虚高数倍（新歌会霸榜），所以按采集跨度折算成日均增量。
+    const evoDays =
+      evoSrc && evoSrc.startTs != null && evoSrc.endTs != null
+        ? Math.max(1, Math.round((evoSrc.endTs - evoSrc.startTs) / 86400))
+        : 0;
+    const evoStat =
+      usedEvo && period === "daily" && evoDays > 1 ? scaleStat(sums[aidStr], 1 / evoDays) : sums?.[aidStr];
+    // 时间归属：只有周榜需要把记录时间替换成源站那一期的采集区间（09-19 ~ 09-26）。
+    // 日榜已折算为日均、月榜沿用本地窗口起点，都不覆盖日期，避免与本地期号错位。
+    const evoTime = usedEvo && period === "weekly";
     const dstat = isNewSong
       ? { view: it.view || 0, favorite: it.favorite || 0, coin: it.coin || 0, like: it.like || 0, danmaku: it.danmaku || 0, reply: it.reply || 0, share: it.share || 0 }
-      : baseSnap
+      : baseHasAid
         ? statHistory.deltaStat(it, baseSnap)
-        // 增量来源：无本地快照(长周期榜)时优先用 evocalrank 周增量累加，其次按发布日起算纯增量
-        : evoSums && Object.prototype.hasOwnProperty.call(evoSums, String(it.aid))
-          ? evoSums[String(it.aid)]
+        // 增量来源：缺基线时优先用 evocalrank 周增量累加（源站采集到的原始数值），其次按发布日起算纯增量
+        : usedEvo
+          ? evoStat
           : { view: 0, favorite: 0, coin: 0, like: 0, danmaku: 0, reply: 0, share: 0 };
     const score = chartScore(dstat);
     if (score <= 0) continue;
@@ -199,6 +250,19 @@ async function buildBoard(period, issue) {
       owner: it.owner || {},
       score,
       ...dstat,
+      // 时间归属：用了源站采集数据时，记录源站对应期的采集区间与期号（仅周榜覆盖记录日期）
+      evo_periods: evoSrc?.periods ?? null,
+      evo_start: evoTime ? tsToDate(evoSrc?.startTs) : null,
+      evo_end: evoTime ? tsToDate(evoSrc?.endTs) : null,
+      // 日榜折算成日均时记录一下除以了几天的采集跨度，便于核对数值
+      avg_days: usedEvo && period === "daily" && evoDays > 1 ? evoDays : null,
+      data_source: usedEvo
+        ? period === "daily" && evoDays > 1
+          ? "evocalrank-daily-avg"
+          : "evocalrank"
+        : isNewSong
+          ? "current"
+          : "snapshot",
       period,
       issue: issueNum,
       new: isNewSong,
@@ -218,11 +282,8 @@ async function buildBoard(period, issue) {
   // ---- 历史对比与成就：prev_rank / prev_score / delta / streak / peak_rank / achievements ----
   // 从上一期开始独立回看每首歌的历史（最多 LOOKBACK_MAX 期）。
   // 缺失快照的期跳过（不作为"未上榜"处理）。
-  // achievements 参考周刊规则：
-  //   superhit   SUPERHIT：累计 2 次登上主榜前 3
-  //   monban     门番：28 期内 20 次 或 50 期内 30 次登上主榜（前 20），且无连续 8 期未上榜
-  //   myth       神话：播放总量突破一千万
-  //   annual_top 年榜首位：本期为年榜第 1 名
+  // achievements 统一使用 vocabili 口径（见下方 ACH_CATEGORIES）：
+  //   emerging_hit / mega_hit 为连续型，potential_regular / regular 为滑窗计数型
   const LOOKBACK_MAX = 50;
   const MAIN_TOP = 20; // 主榜 = 前 20 名
   const snapCache = new Map();
@@ -256,40 +317,38 @@ async function buildBoard(period, issue) {
       if (h && (br == null || h.rank < br)) br = h.rank;
     }
     if (br != null && it.score_rank > br) it.peak_rank = br;
-    // ---- 成就 ----
-    let top3Count = it.score_rank <= 3 ? 1 : 0;
-    let on28 = it.score_rank <= MAIN_TOP ? 1 : 0;
-    let on50 = it.score_rank <= MAIN_TOP ? 1 : 0;
-    // 逐期统计（prevMaps[0]=最近，越往后越早）
-    for (let idx = 0; idx < prevMaps.length; idx++) {
+    // ---- 成就（2026-09-30 统一为 vocabili 体系）----
+    //   emerging_hit       连续 3 期主榜前 5
+    //   mega_hit           连续 5 期主榜前 3
+    //   potential_regular  15 期内有 10 期在前 20（期数不足按 2/3 比例缩放）
+    //   regular            30 期内有 20 期在前 20
+    // 序列按「早期 → 当前」排列；prevMaps 缺失快照的期按其既有规则跳过。
+    const seq = [];
+    for (let idx = prevMaps.length - 1; idx >= 0; idx--) {
       const h = prevMaps[idx].get(k);
-      if (!h) continue;
-      if (h.rank <= 3) top3Count++;
-      if (h.rank <= MAIN_TOP) {
-        if (idx < 28) on28++;
-        on50++;
-      }
+      seq.push(h ? h.rank : null);
     }
-    // 连续 8 期未上榜检测（按时间从早到晚扫描；仅统计歌曲已存在且快照可用的期）
-    let no8Miss = true;
-    {
-      let run = 0;
-      for (let idx = prevMaps.length - 1; idx >= 0; idx--) {
-        const h = prevMaps[idx].get(k);
-        run = h ? 0 : run + 1;
-        if (run >= 8) {
-          no8Miss = false;
-          break;
-        }
-      }
+    seq.push(it.score_rank);
+    let s5 = 0, s3 = 0, best5 = 0, best3 = 0;
+    for (const rk of seq) {
+      if (rk != null && rk >= 1 && rk <= 5) { s5++; best5 = Math.max(best5, s5); } else s5 = 0;
+      if (rk != null && rk >= 1 && rk <= 3) { s3++; best3 = Math.max(best3, s3); } else s3 = 0;
     }
-    const ach = {
-      superhit: top3Count >= 2,
-      monban: (on28 >= 20 || on50 >= 30) && no8Miss,
-      myth: (it.view || 0) >= 10_000_000,
-      annual_top: period === "annual" && it.score_rank === 1,
+    const winCount = (window0, need0) => {
+      const win = Math.min(window0, seq.length);
+      if (!win) return false;
+      const need = Math.max(1, Math.ceil((need0 * win) / window0));
+      const recent = seq.slice(-win);
+      let c = 0;
+      for (const rk of recent) if (rk != null && rk >= 1 && rk <= MAIN_TOP) c++;
+      return c >= need;
     };
-    it.achievements = ach;
+    it.achievements = {
+      emerging_hit: best5 >= 3,
+      mega_hit: best3 >= 5,
+      potential_regular: winCount(15, 10),
+      regular: winCount(30, 20),
+    };
   }
 
   // 期号 1..latestIssue，越新的日期期号越大（前天=1、昨天=2、今天=3）
@@ -406,6 +465,30 @@ const fs = require("node:fs");
 const CACHE_DIR = path.join(__dirname, "..", "..", "cache");
 const LIBRARY_FILE = path.join(CACHE_DIR, "library.json");
 const LIBRARY_TTL = 6 * 3600 * 1000;
+
+// 歌姬索引：标准名 -> { id, picture }（来自 cache/girls.json）。
+// 用于「常合作歌手」头像卡：本站库内只有歌姬名字，头图与 vocalist id 取自这里。
+const GIRLS_FILE = path.join(CACHE_DIR, "girls.json");
+let _girlIndex = null;
+let _girlIndexAt = 0;
+
+function loadGirlIndex() {
+  if (_girlIndex && Date.now() - _girlIndexAt < LIBRARY_TTL) return _girlIndex;
+  const map = new Map();
+  try {
+    const d = JSON.parse(fs.readFileSync(GIRLS_FILE, "utf8"));
+    for (const g of d?.list || []) {
+      if (!g?.name) continue;
+      if (!map.has(g.name)) map.set(g.name, { id: g.id ?? null, picture: g.picture || "" });
+    }
+  } catch {
+    // 读不到就沿用旧索引（可能为空 Map），不阻断主流程
+    return _girlIndex || map;
+  }
+  _girlIndex = map;
+  _girlIndexAt = Date.now();
+  return map;
+}
 
 let _library = null;
 let _libraryAt = 0;
@@ -550,7 +633,16 @@ function girlsFromArchive() {
   return [...byAid.values()];
 }
 
-async function girls() {
+// 全量 groupGirls() 重算约 1.4s（变量：全库遍历 + 歌姬归一展开），
+// 此前 /api/girls 每个请求都重算一遍。这里做进程内 TTL 缓存；
+// 只在真正重算时才回写 cache/girls.json（写盘 ~572KB，不该每次请求都做）。
+const GIRLS_TTL = 10 * 60 * 1000;
+let _girls = null;
+let _girlsAt = 0;
+
+async function girls(force = false) {
+  if (!force && _girls && Date.now() - _girlsAt < GIRLS_TTL) return _girls;
+
   const items = await loadLibrary();
   let singerMap = {};
   try {
@@ -564,7 +656,16 @@ async function girls() {
     libraryReady()
       ? groupGirls(items, singerMap)
       : groupGirls(girlsFromArchive(), singerMap);
-  return { status: "ready", count: list.length, list };
+  const out = { status: "ready", count: list.length, list };
+
+  _girls = out;
+  _girlsAt = Date.now();
+  try {
+    fs.writeFileSync(path.join(CACHE_DIR, "girls.json"), JSON.stringify(out));
+  } catch {
+    /* 写盘失败不影响响应 */
+  }
+  return out;
 }
 
 // 库已完整（complete 且规模达标）时才用实时库，否则用 archive 兜底
@@ -696,59 +797,20 @@ function readBoardCache(period, issueFile) {
 }
 
 async function songHistory(aid) {
+  // 走榜单档案索引：此前每次请求都要全量读+解析 149MB 档案（~1.7s 同步 I/O），
+  // 且同步 I/O 会独占事件循环，视频页多个接口并发时互相排队（实测端到端 12s）。
+  const idx = await boardIndex.get();
+  const all = idx.byAid.get(String(aid)) || [];
   const out = {};
   for (const period of PERIODS_ALL) {
-    const merged = [];
-    const cur = readCacheJson(`board_${period}.json`);
-    if (cur && Array.isArray(cur.list)) merged.push(cur);
-    try {
-      const dir = path.join(ARCHIVE_DIR, period);
-      const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".json")) : [];
-      for (const f of files) {
-        const d = readBoardCache(period, f);
-        if (d && Array.isArray(d.list)) merged.push(d);
-      }
-    } catch (e) {
-      /* ignore */
-    }
-    const byDate = new Map();
-    for (const d of merged) {
-      const key = d.date_start ?? String(d.issue);
-      const prev = byDate.get(key);
-      if (!prev || (Number(d.issue) || 0) > (Number(prev.issue) || 0)) byDate.set(key, d);
-    }
-    const entries = [];
-    for (const d of byDate.values()) {
-      const hit = (d.list || []).find((it) => String(it.aid) === String(aid));
-      if (hit) entries.push({ ...hit, _date: d.date_start ?? null });
-    }
-    entries.sort((a, b) => (Number(a.issue) || 0) - (Number(b.issue) || 0));
-    const records = entries.map((it) => ({
-      issue: it.issue,
-      period,
-      date: it._date ?? null,
-      rank: it.score_rank ?? null,
-      score: it.score ?? 0,
-      view: it.view ?? 0,
-      favorite: it.favorite ?? 0,
-      coin: it.coin ?? 0,
-      like: it.like ?? 0,
-      danmaku: it.danmaku ?? 0,
-      reply: it.reply ?? 0,
-      share: it.share ?? 0,
-      rank_score: it.rank_score ?? null,
-      rank_view: it.rank_view ?? null,
-      rank_favorite: it.rank_favorite ?? null,
-      rank_coin: it.rank_coin ?? null,
-      rank_like: it.rank_like ?? null,
-      rank_danmaku: it.rank_danmaku ?? null,
-      rank_reply: it.rank_reply ?? null,
-      rank_share: it.rank_share ?? null,
-      new: !!it.new,
-      prev_rank: it.prev_rank ?? null,
-      delta: it.delta ?? null,
-      streak: it.streak ?? 0,
-    }));
+    // 索引内已按「(date_start ?? issue) 去重取期号最大者」并期号升序，等价于旧逻辑
+    const records = all
+      .filter((r) => r.period === period)
+      .map((r) => {
+        // 去掉索引专用字段，输出结构与旧实现逐字段一致
+        const { girls: _g, _archived: _a, ...rest } = r;
+        return rest;
+      });
     const stats = {};
     const ranked = records.filter((r) => r.rank != null);
     if (ranked.length) {
@@ -800,24 +862,55 @@ function toSongItem(it) {
   };
 }
 
-// ---- 永久成就（参考周刊规则）----
+// ---- 永久成就（2026-09-29 起 1:1 对齐 vocabili 的类型体系）----
 // 数据源为 board_archive 全部历史期归档 + 最新一期缓存（board_{period}.json）。
 // 永久成就按"历史任一时刻达成即成立"判定，不要求歌曲当前仍在榜。
-// 类别定义（四类永久成就，按周期通用）：
+//
+// vocabili 原始定义（自其前端 bundle 提取）：
+//   周刊成就（cL）：
+//     emerging_hit        Emerging Hit!   连续 3 期主榜前 5 名      maxRank 5  色 #6A0DAD
+//     mega_hit            Mega Hit!!!     连续 5 期主榜前 3 名      maxRank 3  色 #CCA300
+//     potential_regular   门番候补        15 期内有 10 期在前 20 名  maxRank 20 色 #23AFA4
+//     regular             门番            30 期内有 20 期在前 20 名  maxRank 20 色 #127436
+//   日刊门番（AO）：
+//     daily_regular           日刊门番     色 #127436（阈值同「门番」）
+//     daily_potential_regular 日刊门番候补 色 #23AFA4（阈值同「门番候补」）
+//
+// 数据现实适配（与 2026-09-27 的修复同思路）：站内可用历史期数 N 不足官方窗口（周榜仅 ~18 期 < 30）
+// 时，窗口取 min(官方窗口, N)、所需次数按官方比例等比缩放（比例均为 2/3），否则门番系永远为 0。
+// 描述文案仍展示官方口径，不展示缩放细节。
 const ACH_CATEGORIES = [
-  { key: "superhit", label: "SUPERHIT", description: "累计 2 次登上主榜前 3 名", maxRank: 3 },
-  { key: "monban", label: "门番达成", description: "28 期内 20 次 或 50 期内 30 次登上主榜（前 20），且无连续 8 期未上榜", maxRank: 20 },
-  { key: "myth", label: "神话达成", description: "播放总量突破一千万", maxRank: 20 },
-  { key: "annual_top", label: "年榜首位", description: "首次成为年榜首位", maxRank: 1 },
+  // —— vocabili 对齐类型 ——
+  { key: "emerging_hit", label: "Emerging Hit!", description: "连续 3 期主榜前 5 名", maxRank: 5 },
+  { key: "mega_hit", label: "Mega Hit!!!", description: "连续 5 期主榜前 3 名", maxRank: 3 },
+  { key: "potential_regular", label: "门番候补", description: "15 期内有 10 期在前 20 名", maxRank: 20 },
+  { key: "regular", label: "门番", description: "30 期内有 20 期在前 20 名", maxRank: 20 },
+  { key: "daily_regular", label: "日刊门番", description: "30 期内有 20 期在前 20 名", maxRank: 20 },
+  { key: "daily_potential_regular", label: "日刊门番候补", description: "15 期内有 10 期在前 20 名", maxRank: 20 },
+  // 2026-09-30：旧四类（superhit / monban / myth / annual_top）已彻底下线，
+  // 前后端统一为上面这套 vocabili 定义，不再保留兼容分支。
 ];
 
-// 归档期号可能不连续，门番的"无连续 8 期未上榜"按相邻上榜期号差近似判定
-function hasNo8Miss(recs) {
-  for (let i = 1; i < recs.length; i++) {
-    const gap = recs[i].issue - recs[i - 1].issue;
-    if (gap >= 9) return false;
-  }
-  return true;
+// vocabili 同款配色（前端类型 tab / 徽章用）
+const ACH_COLORS = {
+  emerging_hit: "#6A0DAD",
+  mega_hit: "#CCA300",
+  potential_regular: "#23AFA4",
+  regular: "#127436",
+  daily_regular: "#127436",
+  daily_potential_regular: "#23AFA4",
+};
+
+// 计数型成就的官方窗口/所需次数（比例 2/3，缩放共用）
+const ACH_COUNT_WINDOWS = {
+  potential_regular: { window: 15, need: 10 },
+  regular: { window: 30, need: 20 },
+  daily_regular: { window: 30, need: 20 },
+  daily_potential_regular: { window: 15, need: 10 },
+};
+
+function periodDaysOf(board) {
+  return board === "daily" ? 1 : board === "weekly" ? 7 : board === "monthly" ? 30 : 365;
 }
 
 // 从全部历史期归档中，按成就类别筛选（含掉榜歌曲）
@@ -835,16 +928,25 @@ function buildAchievementsByBoard(board, type) {
   } catch (e) {
     /* ignore */
   }
-  const byIssue = new Map();
+  // 归一去重：归档期号混乱（同日多份、日期乱序），按 date_start 归并，同一天只保留条目最长的一份，
+  // 再按日期排序，得到可靠的"逐期历史"。否则跨期成就会在错误期号上失真。
+  const byDate = new Map();
   for (const p of periods) {
-    const k = String(p.issue);
-    const prev = byIssue.get(k);
-    if (!prev || (p.list || []).length >= (prev.list || []).length) byIssue.set(k, p);
+    const d = p.date_start || String(p.issue);
+    const prev = byDate.get(d);
+    if (!prev || (p.list || []).length >= (prev.list || []).length) byDate.set(d, p);
   }
-  const merged = [...byIssue.values()].sort((a, b) => Number(a.issue) - Number(b.issue));
+  const merged = [...byDate.values()].sort((a, b) =>
+    String(a.date_start || a.issue).localeCompare(String(b.date_start || b.issue)),
+  );
+  const N = merged.length;
+  // 全部有效期号（按日期升序）——连续 streak / 滑窗计数都要基于"全期序列"，
+  // 不能只在歌曲上榜的期里数（那样掉榜不会打断 streak）。
+  const orderedIssues = merged.map((p) => Number(p.issue)).filter((n) => Number.isFinite(n));
   const songMap = new Map();
   for (const p of merged) {
     const issue = Number(p.issue);
+    const date = p.date_start || String(p.issue);
     for (const it of p.list || []) {
       const aid = String(it.aid);
       let s = songMap.get(aid);
@@ -852,57 +954,96 @@ function buildAchievementsByBoard(board, type) {
         s = { it, aid, records: [], views: [] };
         songMap.set(aid, s);
       }
-      s.records.push({ issue, rank: Number(it.score_rank) || 0, score: it.score || 0, view: it.view || 0 });
+      s.records.push({ issue, date, rank: Number(it.score_rank) || 0, score: it.score || 0, view: it.view || 0 });
       s.views.push(it.view || 0);
       s.it = it; // 保留最新，便于取标题/封面/播放
     }
   }
   const items = [];
   for (const s of songMap.values()) {
-    const recs = s.records.sort((a, b) => a.issue - b.issue);
-    let top3Count = 0;
-    let onBoardCount = 0;
+    const recs = s.records.sort((a, b) =>
+      a.date === b.date ? a.issue - b.issue : String(a.date).localeCompare(String(b.date)),
+    );
+    const ranks = {};
+    for (const r of recs) ranks[r.issue] = r.rank;
+
+    // —— 连续 streak（vocabili：Emerging Hit! / Mega Hit!!!）——
+    // 按全期序列逐期扫：本期在前 5/前 3 则 streak+1，否则清零；记录首次凑满的期号。
+    let s5 = 0, s3 = 0, best5 = 0, best3 = 0, hit5Issue = null, hit3Issue = null;
+    for (const iss of orderedIssues) {
+      const rk = ranks[iss] || 0;
+      if (rk >= 1 && rk <= 5) {
+        s5++;
+        best5 = Math.max(best5, s5);
+        if (s5 >= 3 && hit5Issue == null) hit5Issue = iss;
+      } else s5 = 0;
+      if (rk >= 1 && rk <= 3) {
+        s3++;
+        best3 = Math.max(best3, s3);
+        if (s3 >= 5 && hit3Issue == null) hit3Issue = iss;
+      } else s3 = 0;
+    }
+
+    // —— 滑窗计数（vocabili：门番候补 / 门番 / 日刊门番 / 日刊门番候补）——
+    // 官方窗口 W0/需要 K0（比例 2/3）；站内可用期 N < W0 时窗口缩到 N、所需按比例缩放。
+    const countHit = (typeKey) => {
+      const cfg = ACH_COUNT_WINDOWS[typeKey];
+      if (!cfg || !orderedIssues.length) return { ok: false, cnt: 0, hitIssue: null, total: 0, win: 0, need: 0 };
+      const win = Math.min(cfg.window, orderedIssues.length);
+      const need = Math.max(1, Math.ceil((cfg.need * win) / cfg.window));
+      const recent = orderedIssues.slice(-win);
+      let cnt = 0;
+      let hitIssue = null;
+      for (const iss of recent) {
+        const rk = ranks[iss] || 0;
+        if (rk >= 1 && rk <= 20) {
+          cnt++;
+          if (cnt >= need && hitIssue == null) hitIssue = iss;
+        }
+      }
+      return { ok: cnt >= need, cnt, hitIssue, total: recs.length, win, need };
+    };
+
     let achieved = null;
     let achievedRank = 0;
-    for (const r of recs) {
-      if (r.rank >= 1 && r.rank <= 3) {
-        top3Count++;
-        if (type === "superhit" && top3Count >= 2) {
-          achieved = achieved ?? r.issue;
-          achievedRank = r.rank;
-        }
-      }
-      if (r.rank >= 1 && r.rank <= 20) {
-        onBoardCount++;
-        if (type === "monban" && onBoardCount >= 20) {
-          achieved = achieved ?? r.issue;
-          achievedRank = r.rank;
-        }
-      }
-      if (type === "myth" && r.view >= 10_000_000) {
-        achieved = achieved ?? r.issue;
-        achievedRank = r.rank;
-      }
+
+    // vocabili 对齐类型的判定
+    const win = orderedIssues.length;
+    let extraMeta = null;
+    let hit = false;
+    if (type === "emerging_hit") {
+      hit = best5 >= 3;
+      if (hit) { achieved = hit5Issue; }
+      extraMeta = { streak: best5, window: win, need: 3 };
+    } else if (type === "mega_hit") {
+      hit = best3 >= 5;
+      if (hit) { achieved = hit3Issue; }
+      extraMeta = { streak: best3, window: win, need: 5 };
+    } else if (ACH_COUNT_WINDOWS[type]) {
+      const c = countHit(type);
+      hit = c.ok;
+      if (hit) { achieved = c.hitIssue; }
+      extraMeta = { onBoard: c.cnt, window: c.win, need: c.need, total: c.total };
     }
+
     const ach = {
-      superhit: top3Count >= 2,
-      monban: onBoardCount >= 20 && hasNo8Miss(recs),
-      myth: Math.max(0, ...s.views) >= 10_000_000,
-      annual_top: board === "annual" && recs.some((r) => r.rank === 1),
+      emerging_hit: best5 >= 3,
+      mega_hit: best3 >= 5,
     };
+    if (ACH_COUNT_WINDOWS[type]) ach[type] = hit;
     if (!ach[type]) continue;
     const it = s.it;
     const rank = Number(it.score_rank) || 0;
-    const ranks = {};
-    for (const r of recs) ranks[r.issue] = r.rank;
-    if (type === "annual_top" && achieved == null) {
-      const hit = recs.find((r) => r.rank === 1);
-      achieved = hit ? hit.issue : null;
-      achievedRank = 1;
-    }
     if (achieved == null) {
       achieved = recs[recs.length - 1].issue;
       achievedRank = rank;
+    }
+    // 日刊门番卡片需要的统计：上榜期数 / 总期数 / 当前连续在榜期数（从最新期往回数）
+    const onBoardCountAll = recs.filter((r) => r.rank >= 1 && r.rank <= 20).length;
+    let tailStreak = 0;
+    for (let i = orderedIssues.length - 1; i >= 0; i--) {
+      if (ranks[orderedIssues[i]] != null) tailStreak++;
+      else break;
     }
     items.push({
       category: type,
@@ -914,16 +1055,39 @@ function buildAchievementsByBoard(board, type) {
       end_issue: recs[recs.length - 1].issue,
       achieved_issue: achieved,
       dropped_issue: null,
+      // 对齐 vocabili 日刊门番卡片的统计字段
+      on_board_count: onBoardCountAll,
+      total_count: recs.length,
+      streak: tailStreak,
+      ...(extraMeta ? { meta: extraMeta } : {}),
     });
   }
   items.sort((a, b) => Number(a.achieved_issue) - Number(b.achieved_issue));
-  return { items, issue: merged.length ? merged[merged.length - 1].issue : null };
+  // periods_available / has_gap：本站该榜可用历史期数，以及历史是否存在断档。
+  // 连续型成就（Emerging Hit! 需 3 期、Mega Hit!!! 需 5 期）在期数不足或历史断档时必然为 0，
+  // 前端据此区分「数据不足」与「确实无人达成」，避免用户以为页面坏了。
+  const pd = periodDaysOf(board);
+  let hasGap = false;
+  for (let i = 1; i < merged.length; i++) {
+    const a = Date.parse(merged[i - 1].date_start || "");
+    const b = Date.parse(merged[i].date_start || "");
+    if (!isNaN(a) && !isNaN(b) && (b - a) / 86400000 > pd * 1.6) {
+      hasGap = true;
+      break;
+    }
+  }
+  return {
+    items,
+    issue: merged.length ? merged[merged.length - 1].issue : null,
+    periods_available: N,
+    has_gap: hasGap,
+  };
 }
 
 // opts: { board: 'weekly'|'daily'|'monthly'|'annual', type, status, page, pageSize }
 async function achievements(opts = {}) {
   const board = ["daily", "weekly", "monthly", "annual"].includes(opts.board) ? opts.board : "weekly";
-  const type = ACH_CATEGORIES.some((c) => c.key === opts.type) ? String(opts.type) : "superhit";
+  const type = ACH_CATEGORIES.some((c) => c.key === opts.type) ? String(opts.type) : "emerging_hit";
   const page = Math.max(1, Number(opts.page) || 1);
   const pageSize = Math.max(1, Math.min(60, Number(opts.pageSize) || 20));
   const result = buildAchievementsByBoard(board, type);
@@ -933,7 +1097,9 @@ async function achievements(opts = {}) {
     type,
     status: String(opts.status || "active"),
     issue: result.issue,
-    categories: ACH_CATEGORIES,
+    periods_available: result.periods_available ?? null,
+    has_gap: result.has_gap ?? false,
+    categories: ACH_CATEGORIES.map((c) => ({ ...c, color: ACH_COLORS[c.key] || undefined })),
     total,
     data: result.items.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
   };
@@ -1040,6 +1206,26 @@ async function ownerDetail(mid) {
   if (!owner && coop.length === 0) return null;
   songs.sort((a, b) => (b.score || 0) - (a.score || 0));
   coop.sort((a, b) => (b.score || 0) - (a.score || 0));
+  // 常合作歌手：只统计该 P主 自己投稿里的歌姬（合作视频的主投不是他，不计入）
+  const girlFreq = new Map();
+  for (const s of songs) {
+    for (const g of canonicalGirls(s.girls || [])) {
+      girlFreq.set(g, (girlFreq.get(g) || 0) + 1);
+    }
+  }
+  const girlIndex = loadGirlIndex();
+  const top_girls = [...girlFreq.entries()]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, 12)
+    .map(([name, count]) => ({
+      name,
+      count,
+      id: girlIndex.get(name)?.id ?? null,
+      picture: girlIndex.get(name)?.picture || "",
+    }));
+  // 热门/最新歌曲：参考站 producer 页两个区块，各 10 条
+  const hot_songs = songs.slice(0, 10);
+  const latest_songs = [...songs].sort((a, b) => (b.pubdate || 0) - (a.pubdate || 0)).slice(0, 10);
   if (!owner) {
     const first = coop[0];
     owner = { mid: target, name: first.owner?.name || "", face: "" };
@@ -1050,31 +1236,24 @@ async function ownerDetail(mid) {
   return {
     owner,
     summary: { song_count: songs.length, total_view: view, total_favorite: favorite, total_coin: coin, total_like: like },
+    top_girls,
+    hot_songs,
+    latest_songs,
     songs,
     coop,
   };
 }
 
 async function girlsByAid(aid) {
+  // 走榜单档案索引：此前每次请求都要全量读+解析 149MB 档案（~1.5s 同步 I/O）
+  const idx = await boardIndex.get();
+  const recs = idx.byAid.get(String(aid));
+  if (!recs) return [];
+  // 与原实现一致：按 daily → weekly → monthly → annual 的顺序，取第一条带歌姬的记录
+  // （recs 内部已按 period 分组、期号升序）
   for (const period of ["daily", "weekly", "monthly", "annual"]) {
-    const dir = path.join(CACHE_DIR, "board_archive", period);
-    let files = [];
-    try {
-      files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
-    } catch (e) {
-      continue;
-    }
-    for (const f of files) {
-      let d = null;
-      try {
-        d = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
-      } catch (e) {
-        continue;
-      }
-      const hit = (d.list || []).find((it) => String(it.aid) === String(aid));
-      if (hit && Array.isArray(hit.girls) && hit.girls.length) {
-        return hit.girls;
-      }
+    for (const r of recs) {
+      if (r.period === period && r._archived && r.girls && r.girls.length) return r.girls;
     }
   }
   return [];

@@ -30,18 +30,10 @@ const NAV = [
       ["/stats", "nav.stats"],
       ["/random", "nav.random"],
       ["/today", "nav.today"],
-      ["/ai", "nav.ai"],
     ],
   },
   { labelKey: "nav.tags", to: "/tags" },
-  {
-    labelKey: "nav.interaction",
-    children: [
-      ["/interaction", "nav.songRequest"],
-      ["/interaction?tab=nominate", "nav.nominate"],
-      ["/interaction?tab=avatar", "nav.avatarSubmit"],
-    ],
-  },
+  // 2026-09-30：整组移除「互动」下拉（点歌 / 提名 / 头像投稿 全部指向已删除的 /interaction）。
 ];
 
 function Moon({ className }) {
@@ -82,16 +74,7 @@ const DRAWER_GROUPS = [
       ["/random", "nav.random"],
       ["/tags", "nav.tags"],
       ["/today", "nav.today"],
-      ["/ai", "nav.ai"],
-    ],
-  },
-  {
-    titleKey: "nav.navGroupInteract",
-    items: [
-      ["/interaction", "nav.songRequest"],
-      ["/interaction?tab=nominate", "nav.nominate"],
-      ["/interaction?tab=avatar", "nav.avatarSubmit"],
-      ["/about", "nav.about"],
+      ["/about", "nav.about"], // 原属「互动」组，该组随 /interaction 一并移除
     ],
   },
 ];
@@ -225,10 +208,14 @@ export default function AppHeader() {
           <Menu className="h-5 w-5" />
         </button>
 
-        <Link to="/" className="flex shrink-0 items-center gap-2 text-base font-semibold">
+        {/* 移动端（<md）站名绝对居中，对齐参考站移动端头部；md 及以上回到左对齐 */}
+        <Link
+          to="/"
+          className="absolute left-1/2 flex max-w-[62%] -translate-x-1/2 shrink-0 items-center gap-2 text-sm font-semibold md:static md:max-w-none md:translate-x-0 md:text-base"
+        >
           {/* 尺寸对齐参考站头部 logo（h-5 w-5 rounded-sm object-cover） */}
-          <img src="/favicon.svg" alt="虚拟歌手榜单" className="h-5 w-5 rounded-sm object-cover" />
-          <span className="hidden truncate font-bold sm:block">虚拟歌手榜单</span>
+          <img src="/favicon.svg" alt="虚拟歌手榜单" className="h-5 w-5 shrink-0 rounded-sm object-cover ring-1 ring-black/10" />
+          <span className="truncate font-bold">虚拟歌手榜单</span>
         </Link>
 
         <nav className="hidden items-center gap-0.5 xl:absolute xl:left-1/2 xl:flex xl:-translate-x-1/2 xl:gap-1">
@@ -334,26 +321,8 @@ export default function AppHeader() {
           )}
         </nav>
 
+        {/* 右侧按钮顺序对齐参考站移动端：语言 → 搜索 → 主题 → 用户/登录 */}
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1.5">
-          <Tip content={t("nav.search")}>
-            <Link
-              to="/search"
-              className="rounded-md p-1.5 text-muted-foreground transition hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary sm:p-2"
-              aria-label={t("nav.search")}
-            >
-              <Search className="h-5 w-5" />
-            </Link>
-          </Tip>
-          <Tip content={t("nav.theme")}>
-            <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="rounded-md p-1.5 text-muted-foreground transition hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary sm:p-2"
-              aria-label={t("nav.theme")}
-            >
-              {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </button>
-          </Tip>
-
           <PopoverMenu
             trigger={
               <Tip content="Language">
@@ -375,6 +344,26 @@ export default function AppHeader() {
               </button>
             ))}
           </PopoverMenu>
+
+          <Tip content={t("nav.search")}>
+            <Link
+              to="/search"
+              className="rounded-md p-1.5 text-muted-foreground transition hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary sm:p-2"
+              aria-label={t("nav.search")}
+            >
+              <Search className="h-5 w-5" />
+            </Link>
+          </Tip>
+          <Tip content={t("nav.theme")}>
+            {/* <sm 头部不放主题按钮（空间让给居中站名），主题切换改在「我的」页提供 */}
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="hidden rounded-md p-1.5 text-muted-foreground transition hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary sm:block sm:p-2"
+              aria-label={t("nav.theme")}
+            >
+              {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+          </Tip>
 
           {user ? (
             <div className="relative">

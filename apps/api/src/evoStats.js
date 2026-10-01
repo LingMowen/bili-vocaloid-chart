@@ -129,6 +129,47 @@ function sumWindow(startTs, endTs) {
   return acc;
 }
 
+// 同 sumWindow，但额外给出每个 aid 的数据来源期与对应采集时间。
+// evocalrank 每一期都有 collect_start_time / collect_end_time，某条记录一旦用了源站采集数据，
+// 它的时间归属就应是源站那一期的采集区间，而不是本地窗口起点 —— 否则会出现
+// 「数据取自 09-19~09-26，记录却标着 09-21」的时间错位。
+// 返回 { sums: {aid: stat}, sources: {aid: {periods, startTs, endTs}} }（时间戳均为秒）。
+function sumWindowWithSource(startTs, endTs) {
+  const acc = {};
+  const src = {};
+  for (const d of loadAllCached()) {
+    const t = d.generateTs || d.collectEndTs;
+    if (t == null) continue;
+    if (t < startTs || t >= endTs) continue;
+    for (const [aid, st] of Object.entries(d.items || {})) {
+      const cur = (acc[aid] = acc[aid] || {
+        view: 0,
+        favorite: 0,
+        coin: 0,
+        danmaku: 0,
+        like: 0,
+        reply: 0,
+        share: 0,
+      });
+      cur.view += Math.max(0, st.play || 0);
+      cur.favorite += Math.max(0, st.favorite || 0);
+      cur.coin += Math.max(0, st.coin || 0);
+      cur.danmaku += Math.max(0, st.danmaku || 0);
+      cur.like += Math.max(0, st.like || 0);
+      cur.reply += Math.max(0, st.comment || 0);
+      cur.share += Math.max(0, st.share || 0);
+
+      const s = (src[aid] = src[aid] || { periods: [], startTs: null, endTs: null });
+      if (d.rankNum != null && !s.periods.includes(d.rankNum)) s.periods.push(d.rankNum);
+      const cs = d.collectStartTs ?? null;
+      const ce = d.collectEndTs ?? null;
+      if (cs != null && (s.startTs == null || cs < s.startTs)) s.startTs = cs;
+      if (ce != null && (s.endTs == null || ce > s.endTs)) s.endTs = ce;
+    }
+  }
+  return { sums: acc, sources: src };
+}
+
 // 清除内存缓存（同步新数据后调用）
 function invalidateCache() {
   _allCache = null;
@@ -145,6 +186,7 @@ module.exports = {
   syncPeriod,
   syncAll,
   sumWindow,
+  sumWindowWithSource,
   invalidateCache,
   DAY,
 };

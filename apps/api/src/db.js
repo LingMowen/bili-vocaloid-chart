@@ -72,6 +72,15 @@ const stmts = {
     ORDER BY c.id ASC
     LIMIT ?
   `),
+  // 「我的」页：某用户的评论（含其收到的回复，parent_id 非空也一并列出）
+  listUserComments: db.prepare(`
+    SELECT c.id, c.aid, c.parent_id, c.content, c.created_at
+    FROM comments c
+    WHERE c.user_id = ?
+    ORDER BY c.id DESC
+    LIMIT ? OFFSET ?
+  `),
+  countUserComments: db.prepare(`SELECT COUNT(*) AS n FROM comments WHERE user_id = ?`),
   deleteComment: db.prepare(`DELETE FROM comments WHERE id = ? AND user_id = ?`),
   deleteRepliesAll: db.prepare(`DELETE FROM comments WHERE parent_id = ?`),
 };

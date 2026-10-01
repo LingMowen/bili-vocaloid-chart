@@ -85,12 +85,14 @@ export function CardActions({ item }) {
   );
 }
 
-// 永久成就徽章（参考周刊规则）：SH / 门番 / 神话 / 年榜首位
+// 永久成就徽章：与 vocabili 对齐的四类（配色取自 vocabili 前端包）
+// 2026-09-30：旧四类（SUPERHIT / 门番达成 / 神话达成 / 年榜首位）已下线，
+// 后端 buildBoard 只回 emerging_hit / mega_hit / potential_regular / regular。
 const ACH_BADGES = [
-  ["superhit", "SH", "bg-violet-600"],
-  ["monban", "门番", "bg-emerald-600"],
-  ["myth", "神话", "bg-amber-500"],
-  ["annual_top", "年榜首位", "bg-sky-600"],
+  ["emerging_hit", "Emerging Hit!", "#6A0DAD"],
+  ["mega_hit", "Mega Hit!!!", "#CCA300"],
+  ["potential_regular", "门番候补", "#23AFA4"],
+  ["regular", "门番", "#127436"],
 ];
 
 export function AchievementBadges({ item, className = "" }) {
@@ -99,8 +101,12 @@ export function AchievementBadges({ item, className = "" }) {
   if (shown.length === 0) return null;
   return (
     <span className={`inline-flex shrink-0 items-center gap-1 ${className}`}>
-      {shown.map(([key, label, cls]) => (
-        <span key={key} className={`inline-flex items-center whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-bold text-white ${cls}`}>
+      {shown.map(([key, label, color]) => (
+        <span
+          key={key}
+          className="inline-flex items-center whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-bold text-white"
+          style={{ backgroundColor: color }}
+        >
           {label}
         </span>
       ))}

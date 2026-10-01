@@ -12,5 +12,9 @@
   "copied": "Copied",
   "retry": "Retry",
   "loading": "Loading…",
-  "database": "Vocabili Database"
+  "database": "Vocabili Database",
+  "chunkErrorTitle": "Failed to load page",
+  "chunkErrorDesc": "A network or browser cache error broke a page resource. Reloading usually fixes it.",
+  "reload": "Reload",
+  "backHome": "Back to home"
 }
