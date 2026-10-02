@@ -3,9 +3,11 @@
 const fs = require("fs");
 const path = require("path");
 
-const ROOT = "E:/编程/xngschina";
+// ROOT 由脚本位置推导（scripts/ 的上一级），不再写死盘符 —— 2026-10-02 归档后
+// 早期调试产物（含 tmp-ui/）已整体移入 old-files/，默认输入路径需带该前缀。
+const ROOT = path.join(__dirname, "..");
 const argv = process.argv.slice(2);
-let IN = path.join(ROOT, "tmp-ui", "audit3", "diff.json");
+let IN = path.join(ROOT, "old-files", "tmp-ui", "audit3", "diff.json");
 let OUT = "";
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -83,7 +85,7 @@ const emptyRef = ok.filter((r) => r.refEmpty).map((r) => r.kind);
 
 const md = `# 全页 UI 对齐巡检汇总（当前站 vs vocabili）
 
-- 数据源：\`tmp-ui/audit3/diff.json\`（由 \`tmp-ui-audit3.js\` 生成）
+- 数据源：\`${path.relative(ROOT, IN).split(path.sep).join("/")}\`（由 \`old-files/tmp-ui-audit3.js\` 生成）
 - 页面类型数：${rows.length}；**有效可比 ${ok.length}**，采集失败 ${bad.length}
 - **平均 class 重叠率（仅有效可比页）：${(avg * 100).toFixed(1)}%**
 
