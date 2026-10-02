@@ -1,4 +1,9 @@
-require("dotenv").config();
+const path = require("node:path");
+
+// .env 用 __dirname 定位（apps/api/.env），而不是 dotenv 默认的「从 cwd 读」：
+// 这样从仓库根目录 `npm run dev:api` 启动也能读到，不再必须先 cd 到 apps/api。
+// 注：cache / .data 等目录本来就是 __dirname 定位，与 cwd 无关。
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const bool = (v, d = false) => (v == null ? d : /^(1|true|yes|on)$/i.test(String(v)));
 
