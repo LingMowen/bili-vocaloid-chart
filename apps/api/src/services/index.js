@@ -14,6 +14,11 @@ const {
 
 const METRICS = ["view", "favorite", "coin", "like", "danmaku", "reply", "share"];
 
+// 评分异常护栏倍数：无快照基线（仅 evo 估算、非真实基线）的非新歌，
+// 其得分若超过「有基线歌曲得分中位数 × 该倍数」即视为异常（如因缺历史被虚高霸榜），
+// 本期暂停收录，等它进入当日快照、下一期有了真实基线再正常计入。
+const ABNORMAL_SCORE_MULTIPLE = 8;
+
 // ---- 增量榜单：全库歌曲按时间窗口起点快照计算 stat 增量后排名 ----
 
 // 各周期窗口起点（自然边界）。返回 { startTs, endTs, label, issue }
@@ -204,6 +209,7 @@ async function buildBoard(period, issue) {
     return evoData;
   };
   const list = [];
+  const noBaseCandidates = []; // 无快照基线且非窗口内新歌的条目（评分异常护栏候选）
   for (const it of items) {
     if (!it.aid) continue;
     const isNewSong = it.pubdate && it.pubdate >= startTs && it.pubdate < endTs;
@@ -227,17 +233,20 @@ async function buildBoard(period, issue) {
     // 时间归属：只有周榜需要把记录时间替换成源站那一期的采集区间（09-19 ~ 09-26）。
     // 日榜已折算为日均、月榜沿用本地窗口起点，都不覆盖日期，避免与本地期号错位。
     const evoTime = usedEvo && period === "weekly";
-    const dstat = isNewSong
-      ? { view: it.view || 0, favorite: it.favorite || 0, coin: it.coin || 0, like: it.like || 0, danmaku: it.danmaku || 0, reply: it.reply || 0, share: it.share || 0 }
-      : baseHasAid
-        ? statHistory.deltaStat(it, baseSnap)
-        // 增量来源：缺基线时优先用 evocalrank 周增量累加（源站采集到的原始数值），其次按发布日起算纯增量
+    // 口径统一：有基线的歌（含窗口内新歌）一律走「期末-期初」增量，
+    // 避免把发布前的存量算进本期增量导致虚高（原逻辑 isNewSong 优先于 baseHasAid，
+    // 会让「有基线却被误标新歌」的歌吃到全量累计值而霸榜）。
+    const dstat = baseHasAid
+      ? statHistory.deltaStat(it, baseSnap)
+      : isNewSong
+        ? { view: it.view || 0, favorite: it.favorite || 0, coin: it.coin || 0, like: it.like || 0, danmaku: it.danmaku || 0, reply: it.reply || 0, share: it.share || 0 }
+        // 增量来源：缺基线且非窗口内新歌时优先用 evocalrank 周增量累加（源站采集到的原始数值）
         : usedEvo
           ? evoStat
           : { view: 0, favorite: 0, coin: 0, like: 0, danmaku: 0, reply: 0, share: 0 };
     const score = chartScore(dstat);
     if (score <= 0) continue;
-    list.push({
+    const entry = {
       aid: it.aid,
       bvid: it.bvid || "",
       title: it.title || "",
@@ -256,13 +265,15 @@ async function buildBoard(period, issue) {
       evo_end: evoTime ? tsToDate(evoSrc?.endTs) : null,
       // 日榜折算成日均时记录一下除以了几天的采集跨度，便于核对数值
       avg_days: usedEvo && period === "daily" && evoDays > 1 ? evoDays : null,
-      data_source: usedEvo
-        ? period === "daily" && evoDays > 1
-          ? "evocalrank-daily-avg"
-          : "evocalrank"
-        : isNewSong
-          ? "current"
-          : "snapshot",
+      data_source: baseHasAid
+        ? "snapshot"
+        : usedEvo
+          ? period === "daily" && evoDays > 1
+            ? "evocalrank-daily-avg"
+            : "evocalrank"
+          : isNewSong
+            ? "current"
+            : "snapshot",
       period,
       issue: issueNum,
       new: isNewSong,
@@ -270,7 +281,29 @@ async function buildBoard(period, issue) {
       prev_score: null,
       delta: null,
       streak: 0,
-    });
+    };
+    list.push(entry);
+    if (!isNewSong && !baseHasAid) noBaseCandidates.push(entry);
+  }
+
+  // ---- 评分异常护栏：无基线非新歌本期暂停收录，下一期再计 ----
+  // 仅 evo 估算（无快照基线）的非新歌，其得分常因缺历史而虚高（如《花骨朵》类老歌靠周榜估算霸榜）。
+  // 以「有真实基线的歌曲得分中位数 × 倍数」为阈值：超过则判定为异常，本期待收录，
+  // 等它进了当日快照、下一期有了真实基线再正常计入，避免虚高值污染当期榜单。
+  // 若当期没有任何有基线的歌（如首跑且无快照），则不排除任何条目（无可比基准）。
+  const baselineScores = list
+    .filter((e) => !noBaseCandidates.includes(e))
+    .map((e) => e.score)
+    .sort((a, b) => a - b);
+  if (baselineScores.length) {
+    const median = baselineScores[Math.floor(baselineScores.length / 2)];
+    const threshold = median * ABNORMAL_SCORE_MULTIPLE;
+    for (const e of noBaseCandidates) {
+      if (e.score > threshold) {
+        const idx = list.indexOf(e);
+        if (idx >= 0) list.splice(idx, 1);
+      }
+    }
   }
 
   list.sort((a, b) => b.score - a.score);
@@ -359,7 +392,18 @@ async function buildBoard(period, issue) {
   // 最新一期（未明确指定）若因增量基线过近而无数据（进行中的周期），自动向前回退到最近一期有数据的榜单。
   // 递归时会带上具体期号，下一次即为"明确指定"，不会无限回退；latest_issue 恒为最新期不受影响。
   if (list.length === 0 && !explicitIssue && issueNum > 1) {
-    return buildBoard(period, issueNum - 1);
+    // P0 回退路径异常护栏：最新一期无数据需向前回退重建时，
+    // 若回退重建（递归 buildBoard）抛错，不让异常冒泡导致整次请求崩溃、
+    // 也避免调用方落盘被中断。失败时退回当前（空）榜单，
+    // issue / latest_issue 仍指向最新期，编号不被回退污染。
+    try {
+      return await buildBoard(period, issueNum - 1);
+    } catch (e) {
+      console.error(
+        `[buildBoard] 回退至期号 ${issueNum - 1} 失败，返回当前空榜单：`,
+        e && e.stack ? e.stack : e
+      );
+    }
   }
 
   return {
