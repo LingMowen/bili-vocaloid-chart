@@ -72,8 +72,8 @@ npm run dev:web      # 仅前端，vite
 ```
 
 > 后端以 `--watch` 运行，修改 `apps/api/src/**` 会自动重启并重建榜单缓存。
-> 注意：dotenv 从**当前工作目录**读取 `.env`，单独启动后端时请在 `apps/api` 目录下执行，
-> 否则 `BILIBILI_COOKIE`、`AI_REVIEW_KEY` 等读不到。
+> `.env` 由 `apps/api/src/config.js` 按 `__dirname` 定位（`apps/api/.env`），
+> 因此**从仓库根目录直接 `npm run dev:api` 也能读到**，不必先 `cd`。
 
 ## 端口与本地地址
 
