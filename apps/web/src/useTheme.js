@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const KEY = "xngschina-theme";
+const KEY = "bili-vocaloid-chart-theme";
 
 export function useTheme() {
   const [theme, setTheme] = useState(() => {

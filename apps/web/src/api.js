@@ -1,7 +1,7 @@
 import { track } from "./components/Loading.jsx";
 
-export const SESS_KEY = "xngschina-sessdata";
-export const TOKEN_KEY = "xngschina-auth-token";
+export const SESS_KEY = "bili-vocaloid-chart-sessdata";
+export const TOKEN_KEY = "bili-vocaloid-chart-auth-token";
 
 export function api(path, opts = {}, retries = 180) {
   if (opts.silent) return apiCore(path, opts, retries);

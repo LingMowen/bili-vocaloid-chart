@@ -45,7 +45,7 @@ import enUser from "./locales/en/user.json";
 import zhMe from "./locales/zh/me.json";
 import enMe from "./locales/en/me.json";
 
-export const LANG_KEY = "xngschina-lang";
+export const LANG_KEY = "bili-vocaloid-chart-lang";
 
 const resources = {
   zh: {
