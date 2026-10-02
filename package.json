@@ -9,7 +9,12 @@
     "dev:api": "node --watch apps/api/src/index.js",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\"",
-    "backup": "bash scripts/backup.sh"
+    "backup": "bash scripts/backup.sh",
+    "hooks:install": "node scripts/install-hooks.js",
+    "hooks:check": "node scripts/install-hooks.js --check",
+    "preflight": "node scripts/preflight.js",
+    "preflight:selftest": "node scripts/preflight-selftest.js",
+    "changelog": "node scripts/changelog.js"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"

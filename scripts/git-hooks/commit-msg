@@ -1,0 +1,83 @@
+#!/bin/sh
+# commit-msg —— 提交信息门禁
+#
+# 为什么要拦：这个项目基本全靠 AI 改，人几乎不读 commit。
+# 一条写成「优化了一堆东西」的 commit，等于把信息永久销毁。
+# 这里只卡两件最容易丢、也最致命的事：
+#   1. 格式：type(scope): 摘要
+#   2. 正文：必须写清「改了什么」和「怎么验证的」
+#
+# 绕过：git commit --no-verify    （会留痕于 reflog，别常用）
+
+MSG_FILE="$1"
+[ -f "$MSG_FILE" ] || exit 0
+
+# 有些编辑器（老版 Windows 记事本等）存出来是带 BOM 的 UTF-8。
+# 那个 BOM 会粘在首行最前面，让格式检查莫名其妙地全线失败。
+# 先剥掉 BOM，后面所有判断都基于干净内容。
+#
+# 用 head -c / od 判断字节头，而不是 `tr -d '\357\273\277'`：不同 tr 对八进制转义
+# 的处理不一样，踩过一次——转义没被当成字节，文件反而被改坏，grep 直接报
+# "Binary file ... matches"，门禁对所有提交一律失败，比没有门禁更糟。
+CLEAN=$(mktemp)
+BOM=$(head -c 3 "$MSG_FILE" | od -An -tx1 | tr -d ' \n')
+if [ "$BOM" = "efbbbf" ]; then
+  tail -c +4 "$MSG_FILE" > "$CLEAN"
+else
+  cat "$MSG_FILE" > "$CLEAN"
+fi
+
+trap 'rm -f "$CLEAN"' EXIT
+
+# 跳过合并、修订等自动生成的提交
+if grep -qE '^Merge |^Revert "' "$CLEAN" 2>/dev/null; then
+  exit 0
+fi
+
+# 注释行（以 # 开头）剥掉后再看正文
+BODY=$(grep -v '^#' "$CLEAN" | sed '/^[[:space:]]*$/d')
+
+SUBJECT=$(printf '%s\n' "$BODY" | head -n 1)
+REST=$(printf '%s\n' "$BODY" | tail -n +2)
+
+fail() {
+  echo ""
+  echo "  ✗ 提交被 commit-msg 门禁拦下：$1"
+  echo ""
+  shift
+  for line in "$@"; do echo "    $line"; done
+  echo ""
+  echo "    模板见 .gitmessage（git commit 会自动带上）"
+  echo "    确实要跳过：git commit --no-verify"
+  echo ""
+  exit 1
+}
+
+# 1) 格式
+if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|docs|refactor|chore|test|perf|build|ci|style|revert)(\([a-zA-Z0-9_./-]+\))?!?: .+'; then
+  fail "首行不符合 <type>(<scope>): <摘要>" \
+       "现在这样：$SUBJECT" \
+       "应该像：fix(api): 空指针导致 /api/board 500"
+fi
+
+# 2) 长度
+LEN=$(printf '%s' "$SUBJECT" | wc -m | tr -d ' ')
+if [ "$LEN" -gt 72 ]; then
+  fail "摘要 $LEN 字符，超过 72" "首行：$SUBJECT"
+fi
+
+# 3) 正文必须交代「改了什么」和「怎么验证」
+#
+#    注意：这里找的是「改动：」「验证：」，**不能写成 `## 改动`**。
+#    git 会把以 # 开头的行当注释剥掉，写 `##` 等于什么都没写。
+MISSING=""
+printf '%s\n' "$REST" | grep -qE '^改动[:：]' || MISSING="$MISSING 改动"
+printf '%s\n' "$REST" | grep -qE '^验证[:：]' || MISSING="$MISSING 验证"
+if [ -n "$MISSING" ]; then
+  fail "正文缺少小节：$MISSING" \
+       "纯 AI 开发最容易丢的就是这两段——人没看懂，AI 也没留痕。" \
+       "加两行：改动：… / 验证：…（不要用 ## 开头，git 会当注释剥掉）" \
+       "模板见 .gitmessage"
+fi
+
+exit 0

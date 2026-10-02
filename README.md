@@ -55,11 +55,29 @@ bili-vocaloid-chart/
 ```bash
 npm install          # 根目录执行一次，安装全部 workspace 依赖
 
+npm run hooks:install   # 装 git 门禁（commit-msg + pre-push），clone 后必做一次
+
 cd apps/api && cp .env.example .env     # 复制环境变量模板，再填入你自己的值（见下节）
 cd ../..
 
 npm run dev          # 同时启动 api(1003) + web(1005)
 ```
+
+## 提交纪律
+
+这个项目基本由 AI 维护、人很少读 commit，所以提交信息与推送是被**机器门禁**强制的：
+
+| 命令 | 作用 |
+|---|---|
+| `npm run preflight` | 推送前自检：凭据是否泄进跟踪文件、禁入目录是否被跟踪、JS 语法、JSON 合法性 |
+| `npm run preflight:selftest` | 验证上面这道门禁**真的会拦**（用合成假凭据走完整链路） |
+| `npm run changelog` | 从 git 历史重新生成 `docs/变更史.md` |
+| `npm run hooks:check` | 检查门禁是否已装 |
+
+- commit 首行必须是 `<type>(<scope>): <摘要>`，正文必须有 `改动：` 和 `验证：` 两行
+  （模板见 `.gitmessage`）；
+- 真实身份由 `.mailmap` + 仓库级 `git config` 保证，GitHub Contributors 图显示的是你本人；
+- 完整说明见 [`docs/对接文档.md` §0.7](docs/对接文档.md)。
 
 > ⚠️ **仓库里不包含任何真实凭据**：`.env.example` 中的 cookie、密钥、邮箱密码一律为空，
 > 这些值**需要你自己填写**。全部留空也能浏览公开榜单，但采集（B 站登录态）、AI 审核、

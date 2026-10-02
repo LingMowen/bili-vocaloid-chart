@@ -1,0 +1,29 @@
+# 提交信息模板（git config commit.template 已指向本文件）
+#
+# 硬性格式（scripts/git-hooks/commit-msg 会拦）：
+#   <type>(<scope>): <一句话摘要，≤72 字符>
+#   type ∈ feat fix docs refactor chore test perf build ci style revert
+#   scope 用受影响的那一层，例：api / web / sdk / deps / docs / preflight
+#
+# 下面正文不是形式主义，是这个项目唯一能回答「到底改了什么」的依据。
+# 纯 AI 开发最容易丢的就是这两段——人没看懂，AI 也没留下痕迹，
+# 三个月后 commit message 变成一串谜语。所以这里强制。
+#
+# ⚠️ 小节标题**不能写成 `## 改动`**：git 会把以 # 开头的行当注释剥掉，
+#    写 `##` 等于没写。必须用「改动：」这种不带 # 的形式。
+
+<type>(<scope>): <摘要>
+
+改动：<一句话说清这次到底动了什么，别写「优化代码」「修复若干问题」这种空话>
+原因：<为什么要改，不写就等于下次还会犯同一个错>
+验证：<实际跑过的命令或请求 + 结果，例：npm run preflight → 0 失败；GET /api/stats → 200>
+影响面：<改了哪些接口 / 数据结构 / 配置，需要谁来配合>
+
+# 示例（把 # 去掉再用）：
+# feat(api): /api/board 支持按 tag 过滤
+#
+# 改动：board 查询接受 ?tag=，为空时保持原行为
+# 原因：前端标签页拿不到非热门标签的数据，只能靠翻页
+# 验证：node scripts/preflight.js → 0 失败
+#       GET /api/board/all?period=weekly&tag=VOCALOID → 200
+# 影响面：新增可选查询参数，向后兼容
