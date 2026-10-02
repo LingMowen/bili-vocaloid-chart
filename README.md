@@ -47,10 +47,9 @@ bili-vocaloid-chart/
 > 项目开发日志（`docs/开发日志.md`）是**开发过程记录，不入库**，只在本地保留。
 
 > 只在本地保留、**不入库**的内容：开发日志 `docs/开发日志.md`；以及**已归档**到 `old-files/` 的历史资料 ——
-> `old-files/.workbuddy/`（开发记忆）、`old-files/.workbuddy-ai/`（助手工作区）、
-> `old-files/.reference/` 与 `old-files/参考文件/`（参考站页面 / 接口 / DOM 快照）、
-> `old-files/SDK/`、`old-files/1/`（整站镜像）、`old-files/tmp-ui/`（早期调试脚本）等。
-> 这些都不随仓库发布，clone 出来的仓库里不会有。
+> 按用途分成 `reference/`（参考站页面 / 接口 / DOM 快照与拆解工作区）、`sessions/`（各会话开发记忆与导出）、
+> `debug/`（早期调试脚本与截图）、`sources/`（第三方参考源码）、`backups/`（开发期 .bak 快照）五区，
+> 目录地图见 `old-files/README.md`。这些都不随仓库发布，clone 出来的仓库里不会有。
 
 ## 快速开始
 
