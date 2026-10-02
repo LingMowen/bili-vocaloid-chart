@@ -86,13 +86,13 @@ npm run dev          # 同时启动 api(1003) + web(1005)
 
 | 命令 | 覆盖 |
 |---|---|
-| `npm run test:api` | 47 个接口用例（30 只依赖本服务 + 17 真调 B 站） |
+| `npm run test:api` | 54 个接口用例（35 只依赖本服务 + 19 真调 B 站） |
 | `npm run test:browser` | 17 个页面，真实 Chromium，校验文案/字数/无报错 |
 | `npm test` | 两部分都跑 |
 | `npm run verify` | `preflight` + `test:api`，推送前最省事的一条 |
 
 用例里的 aid / mid / 歌手 id 全部从 `/api/board/all` 现取，不写死——写死的 id 只能测出
-「那个 id 还在不在」，测不出「接口取不到数据了」。已知的接口行为缺陷记在
+「那个 id 还在不在」，测不出「接口取不到数据了」。分页参数踩过的坑记在
 [`docs/对接文档.md` §0.8](docs/对接文档.md)。
 
 > ⚠️ **仓库里不包含任何真实凭据**：`.env.example` 中的 cookie、密钥、邮箱密码一律为空，

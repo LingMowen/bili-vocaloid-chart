@@ -165,12 +165,12 @@ async function testLocal() {
   group("C. 参数校验（该 400 的必须 400）");
   await api("榜单 kind 非法 → 400", 400, "/api/board/xyz");
   await api("榜单 pn=999 → 400", 400, "/api/board/all?pn=999");
-  // pn=0：第 886 行写着 `pn < 1 → 400`，但 `Number(req.query.pn) || 1` 会把 0 当成
-  // 假值替换成 1，于是 pn=0 被悄悄当成第 1 页返回 200。这是实测出来的真 bug，
-  // 不是测试写错。这里先按现状断言 200，等修复后本行改成 expect 400。
-  await api("榜单 pn=0（当前放行，已知 bug）", 200, "/api/board/all?pn=0", {
-    check: (r) => (r.json?.data?.pn === 0 || r.json?.data === undefined ? null : null),
-  });
+  // pn=0 曾经被悄悄放行：`Number(req.query.pn) || 1` 把 0 当成假值替换成 1，
+  // 下面自己写的 `pn < 1 → 400` 形同虚设。已改用 intParam() 修掉，这里锁住回归。
+  await api("榜单 pn=0 → 400（曾被当第 1 页放行）", 400, "/api/board/all?pn=0");
+  await api("榜单 ps=0 → 400（同上）", 400, "/api/board/all?ps=0");
+  await api("榜单 pn=abc → 400（非数字）", 400, "/api/board/all?pn=abc");
+  await api("榜单 pn 不传 → 用默认第 1 页", 200, "/api/board/all");
   await api("搜索缺 keyword → 400", 400, "/api/search");
   await api("owners 缺 keyword → 400", 400, "/api/owners");
   await api("owner mid 非法 → 400", 400, "/api/owner/abc");
@@ -253,6 +253,8 @@ async function testLocal() {
     method: "POST",
     body: { content: "这是一条不应该被发出去的测试评论" },
   });
+  await api("评论 page=0 → 400（曾被当第 1 页放行）", 400, `/api/video/${item?.aid ?? 1}/comments?page=0`);
+  await api("评论 page_size=0 → 400（同一病根）", 400, `/api/video/${item?.aid ?? 1}/comments?page_size=0`);
 }
 
 // ────────────────────────────────────────── API：联网层（连 B 站）
@@ -273,9 +275,14 @@ async function testOnline() {
     tier: "online",
     check: (r) => (r.json?.data?.sort === "view" ? null : "sort 没有透传"),
   });
-  // page=0 与 pn=0 是同一个病根：第 423 行 `Number(req.query.page) || 1` 把 0 当假值
-  // 换成了 1，于是越界值被悄悄当成第 1 页放行。现状记录为 200，修完改成 400。
-  await api("page=0（当前放行，已知 bug）", 200, "/api/search?keyword=" + enc("初音未来") + "&page=0", {
+  // page=0 与 pn=0 是同一个病根，已随 intParam() 一起修掉，这里锁住回归。
+  await api("搜索 page=0 → 400（曾被当第 1 页放行）", 400, "/api/search?keyword=" + enc("初音未来") + "&page=0", {
+    tier: "online",
+  });
+  await api("owners page=0 → 400（同一病根）", 400, "/api/owners?keyword=" + enc("Yowane") + "&page=0", {
+    tier: "online",
+  });
+  await api("搜索 page 不传 → 用默认第 1 页", 200, "/api/search?keyword=" + enc("初音未来"), {
     tier: "online",
   });
   await api("page 超出上限 → 400", 400, "/api/search?keyword=a&page=99999", { tier: "online" });
