@@ -3,8 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": [
-    "apps/*",
-    "bilibili-sdk/bilibili-master"
+    "apps/*"
   ],
   "scripts": {
     "dev:api": "node --watch apps/api/src/index.js",

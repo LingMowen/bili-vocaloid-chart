@@ -10,7 +10,7 @@ B 站虚拟歌手（术力口）音乐排行榜站。数据取自哔哩哔哩站
 |---|---|
 | 前端 `apps/web` | Vite 5 + React 18 + React Router 7 + Tailwind CSS 4 + Radix UI + TanStack Query + ECharts + i18next |
 | 后端 `apps/api` | Node.js（CommonJS）+ Express 4 + `node:sqlite` + nodemailer + dotenv |
-| B 站 SDK `bilibili-sdk/bilibili-master` | 上游 TypeScript SDK（`aemeath-projects/bilibili`），承担签名（wbi）与接口调用 |
+| B 站 SDK `@aemeath-projects/bilibili` | 上游 TypeScript SDK（`aemeath-projects/bilibili`，npm 依赖，承担签名（wbi）与接口调用）；源码副本已归档到 `old-files/sources/bilibili-sdk/` |
 | 包管理 | npm workspaces（根目录统一 `npm install`） |
 
 ## 目录结构
@@ -41,7 +41,6 @@ bili-vocaloid-chart/
 │   ├── 周虚拟歌姬中文曲排行榜规则.md   # 收录范围、评分公式、成就规则
 │   ├── 对接文档.md                    # 布局对接、增量口径、本地环境
 │   └── agents/                        # issue tracker / triage / 域文档布局约定
-└── bilibili-sdk/                     # 上游 B 站 SDK
 ```
 
 > 项目开发日志（`docs/开发日志.md`）是**开发过程记录，不入库**，只在本地保留。
@@ -156,7 +155,7 @@ cp .env.example .env     # 然后照模板里的注释把值填进去
 
 ```
 web (Vite) --/api--> Express
-                       ├─ collector.js --bilibili-sdk--> 哔哩哔哩 API（30 分区 / 搜索 / 视频详情）
+                       ├─ collector.js --@aemeath-projects/bilibili--> 哔哩哔哩 API（30 分区 / 搜索 / 视频详情）
                        ├─ aiReview.js   --HTTP--> AI 审核服务（虚拟歌姬判定）
                        ├─ evoStats.js   --HTTP--> evocalrank（周增量基线兜底）
                        └─ cache/*.json + .data/app.db（SQLite：用户 / 评论）
