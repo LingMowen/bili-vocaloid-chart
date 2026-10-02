@@ -1,0 +1,42 @@
+#!/bin/sh
+# pre-push —— 推送前门禁
+#
+# 每次推送前跑 scripts/preflight.js：真实凭据是否泄进跟踪文件、
+# 禁入目录是否被跟踪、JS 语法、JSON 合法性。未跟踪文件与服务健康只提醒不拦。
+#
+# 绕过：SKIP_PREFLIGHT=1 git push origin main
+
+if [ "$SKIP_PREFLIGHT" = "1" ]; then
+  echo "  ! SKIP_PREFLIGHT=1 —— 跳过推送门禁（这次绕过会留在 shell history 里）"
+  exit 0
+fi
+
+# 找到能用的 node
+NODE=""
+for cand in node "D:/ProgramData/node/node.exe" \
+            "C:/Users/Administrator/.workbuddy/binaries/node/versions/22.22.2-3/node.exe"; do
+  if command -v "$cand" >/dev/null 2>&1 || [ -x "$cand" ]; then
+    NODE="$cand"
+    break
+  fi
+done
+
+if [ -z "$NODE" ]; then
+  echo "  ! 找不到 node，跳过推送门禁"
+  exit 0
+fi
+
+echo ""
+echo "  推送门禁 preflight："
+"$NODE" scripts/preflight.js
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "  ✗ 推送被拦下：preflight 有 BLOCK 项"
+  echo "    真要推：SKIP_PREFLIGHT=1 git push origin main"
+  echo ""
+  exit 1
+fi
+
+exit 0
