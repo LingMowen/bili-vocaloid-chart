@@ -244,7 +244,7 @@ function makeRouter() {
       await transporter.sendMail({
         from: config.smtp.from,
         to: email,
-        subject: "【xngschina】登录验证码",
+        subject: "【bili-vocaloid-chart】登录验证码",
         text: `你的登录验证码是 ${code}，5 分钟内有效。若非本人操作请忽略。`,
       });
       res.json({ ok: true, data: { sent: true } });

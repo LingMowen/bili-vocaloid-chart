@@ -20,7 +20,7 @@ module.exports = {
   searchMaxPage: 20,
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:1005",
   sessionSecret:
-    process.env.SESSION_SECRET || "xngschina-dev-secret-change-me",
+    process.env.SESSION_SECRET || "bili-vocaloid-chart-dev-secret-change-me",
   cccyun: {
     apiUrl: process.env.CCCYUN_API_URL || "https://u.cccyun.cc/",
     appId: process.env.CCCYUN_APPID || "1000",

@@ -35,7 +35,7 @@ async function getJSON(path, retries = 3) {
     await throttle();
     try {
       const res = await fetch(BASE + path, {
-        headers: { Accept: "application/json", "User-Agent": "xngschina/1.0" },
+        headers: { Accept: "application/json", "User-Agent": "bili-vocaloid-chart/1.0" },
       });
       if (res.status === 429) {
         const backoff = 2000 * Math.pow(2, attempt);

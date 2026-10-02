@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# xngschina — 一键备份（git 提交）
+# bili-vocaloid-chart — 一键备份（git 提交）
 #
 # 用法：
 #   bash scripts/backup.sh "feat: 歌手详情页对齐参考站"

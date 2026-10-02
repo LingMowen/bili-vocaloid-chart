@@ -9,7 +9,7 @@ import PopoverMenu from "../components/ui/Popover.jsx";
 import { EntityCard, ENTITY_GRID_WIDE } from "../components/ui/EntityCard.jsx";
 import { SegmentedTabs } from "../components/ui/Tabs.jsx";
 
-const HISTORY_KEY = "xngschina-search-history";
+const HISTORY_KEY = "bili-vocaloid-chart-search-history";
 const HISTORY_MAX = 10;
 const PAGE_SIZE = 20;
 

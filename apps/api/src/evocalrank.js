@@ -24,7 +24,7 @@ async function throttle(ms = 400) {
 async function getJSON(path) {
   await throttle();
   const res = await fetch(BASE + path, {
-    headers: { "User-Agent": "xngschina/1.0", Accept: "application/json" },
+    headers: { "User-Agent": "bili-vocaloid-chart/1.0", Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`evocalrank ${res.status} for ${path}`);
   return res.json();

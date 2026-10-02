@@ -1,4 +1,4 @@
-# xngschina
+# bili-vocaloid-chart
 
 B 站虚拟歌手（术力口）音乐排行榜站。数据取自哔哩哔哩站内，界面参照 [vocabili.top](https://vocabili.top)（术力口数据库）。
 
@@ -16,7 +16,7 @@ B 站虚拟歌手（术力口）音乐排行榜站。数据取自哔哩哔哩站
 ## 目录结构
 
 ```
-xngschina/
+bili-vocaloid-chart/
 ├── apps/
 │   ├── web/                 # 前端（Vite）
 │   │   └── src/
