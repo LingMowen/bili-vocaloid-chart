@@ -1,0 +1,16 @@
+# Git 身份归一映射
+#
+# 背景：2026-10-02 之前的 19 个提交都署名为 `xngschina-dev <dev@xngschina.local>`
+# ——一个本地假身份，邮箱不挂任何 GitHub 账号，GitHub 无法把贡献归属到真实账号，
+#   于是 Contributors 图里看不到真正的作者。
+#
+# 语法（方向别搞反）：<规范姓名> <规范邮箱>  <提交里的姓名> <提交里的邮箱>
+#   左边 = 想显示成什么；右边 = 提交里实际写的是什么。
+#   曾把左右写反，导致映射静默失效——`git check-mailmap` 返回原值就是没匹配上。
+#
+# 校验：git log --use-mailmap --format="%aN <%aE" | sort -u
+#   注意占位符是 `%aN/%aE`（大写 N/E = 套用 mailmap 后），
+#   `%an/%ae`（小写）永远是原始值，不套用——用小写去"验证"会误判成没生效。
+#
+# 本文件只改「显示与归属」，不改历史；新提交请用真实身份（仓库级 git config 已配好）。
+LingMowen <176232342+LingMowen@users.noreply.github.com> xngschina-dev <dev@xngschina.local>

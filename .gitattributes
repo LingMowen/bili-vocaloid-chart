@@ -1,0 +1,30 @@
+# 换行符：别让 Git 悄悄改脚本
+#
+# hooks 是由 Git 自带的 sh 执行的，文件里只要有一个 CRLF 就报 bad interpreter，
+# 钩子直接失效 —— 而且不会报错在钩子上，只会表现为「门禁莫名其妙没拦」。
+* text=auto
+
+# 钩子必须 LF
+scripts/git-hooks/* text eol=lf
+
+# 这几个是「被程序读」的文本，CRLF 可能让匹配落空
+.mailmap text eol=lf
+.gitmessage text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+# 脚本同理
+scripts/*.sh text eol=lf
+scripts/*.js text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# 二进制，明确不做换行转换
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
