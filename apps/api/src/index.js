@@ -52,6 +52,23 @@ function parseId(raw, name) {
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
+// 解析整数查询参数。
+//
+// 为什么不能用 `Number(req.query.pn) || 1`：
+// `0` 是假值，会被当成「没传」换成默认值，于是 `?pn=0` 变成第 1 页被放行，
+// 下面自己写的 `pn < 1 → 400` 校验形同虚设。越界值被悄悄当成合法输入，
+// 比直接报错难查得多。
+//
+// 这里只负责「区分没传和传了」：
+//   没传 / 空串 → 返回默认值
+//   传了但不是数字 → 返回 NaN，交给调用方的范围校验去 400
+//   传了 → 原样返回（包括 0 和负数），让校验说话
+function intParam(value, fallback) {
+  if (value == null || String(value).trim() === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : NaN;
+}
+
 function fail(res, status, message) {
   return res.status(status).json({ ok: false, message });
 }
@@ -420,7 +437,7 @@ app.get("/api/search", async (req, res, next) => {
   const rawType = String(req.query.type || "video");
   const type = rawType === "all" ? "all" : rawType === "user" ? "bili_user" : "video";
   const sort = ["score", "view", "pubdate"].includes(req.query.sort) ? req.query.sort : "score";
-  const page = Number(req.query.page) || 1;
+  const page = intParam(req.query.page, 1);
   if (!Number.isInteger(page) || page < 1 || page > config.searchMaxPage) {
     return fail(res, 400, `page 需在 1-${config.searchMaxPage}`);
   }
@@ -454,7 +471,7 @@ app.get("/api/search", async (req, res, next) => {
 app.get("/api/owners", (req, res, next) => {
   const keyword = String(req.query.keyword || "").trim().slice(0, 50);
   if (!keyword) return fail(res, 400, "missing keyword");
-  const page = Number(req.query.page) || 1;
+  const page = intParam(req.query.page, 1);
   if (!Number.isInteger(page) || page < 1) return fail(res, 400, "page 需为正整数");
   const sort = ["works", "view"].includes(req.query.sort) ? req.query.sort : "works";
   wrap(req, res, next, async () => {
@@ -878,8 +895,8 @@ app.get("/api/board/:kind", (req, res, next) => {
   if (!["cn", "intl", "all"].includes(kind)) {
     return fail(res, 400, "kind 需为 cn/intl/all（中文榜/其他语言榜/综合榜）");
   }
-  const pn = Number(req.query.pn) || 1;
-  const ps = Number(req.query.ps) || 20;
+  const pn = intParam(req.query.pn, 1);
+  const ps = intParam(req.query.ps, 20);
   const order = String(req.query.order || "score");
   const period = ["daily", "weekly", "monthly", "annual"].includes(req.query.period) ? req.query.period : "daily";
   const issue = req.query.issue != null && String(req.query.issue).trim() !== "" ? Number(req.query.issue) : null;
@@ -1169,9 +1186,11 @@ app.get("/api/video/:aid/comments", (req, res, next) => {
   const aidNum = parseId(req.params.aid, "aid");
   if (!aidNum) return fail(res, 400, "invalid aid");
   const aid = String(aidNum);
-  const page = Number(req.query.page) || 1;
-  const pageSize = Math.min(Number(req.query.page_size) || 20, 50);
-  if (page < 1 || pageSize < 1) return fail(res, 400, "invalid paging");
+  const page = intParam(req.query.page, 1);
+  const pageSize = Math.min(intParam(req.query.page_size, 20), 50);
+  if (!Number.isInteger(page) || !Number.isInteger(pageSize) || page < 1 || pageSize < 1) {
+    return fail(res, 400, "invalid paging");
+  }
   try {
     const roots = stmts.listComments.all(String(aid), pageSize, (page - 1) * pageSize);
     const countRow = stmts.countComments.get(String(aid));
