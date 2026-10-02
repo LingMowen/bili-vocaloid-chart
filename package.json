@@ -14,7 +14,12 @@
     "hooks:check": "node scripts/install-hooks.js --check",
     "preflight": "node scripts/preflight.js",
     "preflight:selftest": "node scripts/preflight-selftest.js",
-    "changelog": "node scripts/changelog.js"
+    "changelog": "node scripts/changelog.js",
+    "svc": "node scripts/dev.js",
+    "svc:start": "node scripts/dev.js start",
+    "svc:stop": "node scripts/dev.js stop",
+    "svc:restart": "node scripts/dev.js restart",
+    "svc:status": "node scripts/dev.js status"
   },
   "devDependencies": {
     "concurrently": "^10.0.4"
