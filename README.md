@@ -1,4 +1,4 @@
-﻿# xngschina
+# xngschina
 
 B 站虚拟歌手（术力口）音乐排行榜站。数据取自哔哩哔哩站内，界面参照 [vocabili.top](https://vocabili.top)（术力口数据库）。
 
@@ -36,21 +36,31 @@ xngschina/
 │       │   └── related.js        # 关联作品索引
 │       ├── cache/                # 榜单 / 全库 / 快照 / 审核结果（JSON）
 │       ├── .data/app.db          # 用户与评论（SQLite）
-│       └── .env                  # 环境变量（见 .env.example）
+│       └── .env                  # 环境变量（本地填写，见 .env.example；不入库）
 ├── docs/
 │   ├── 周虚拟歌姬中文曲排行榜规则.md   # 收录范围、评分公式、成就规则
 │   ├── 对接文档.md                    # 布局对接、增量口径、本地环境
 │   └── 开发日志.md                    # 变更记录（倒序）
-├── 参考文件/vocabili-页面参考/        # 参考站页面与 API 快照
 └── bilibili-sdk/                     # 上游 B 站 SDK
 ```
+
+> 只在本地保留、**不入库**的目录：`.workbuddy/`（开发记忆与备份）、`.workbuddy-ai/`（助手工作区）、
+> `.reference/` 与 `参考文件/`（参考站页面 / 接口 / DOM 快照）。clone 出来的仓库里不会有这些。
 
 ## 快速开始
 
 ```bash
 npm install          # 根目录执行一次，安装全部 workspace 依赖
+
+cd apps/api && cp .env.example .env     # 复制环境变量模板，再填入你自己的值（见下节）
+cd ../..
+
 npm run dev          # 同时启动 api(1003) + web(1005)
 ```
+
+> ⚠️ **仓库里不包含任何真实凭据**：`.env.example` 中的 cookie、密钥、邮箱密码一律为空，
+> 这些值**需要你自己填写**。全部留空也能浏览公开榜单，但采集（B 站登录态）、AI 审核、
+> 第三方登录、邮箱验证码会不可用。
 
 也可单独启动：
 
@@ -75,17 +85,31 @@ npm run dev:web      # 仅前端，vite
 
 ## 环境变量
 
-配置在 `apps/api/.env`（模板见 `.env.example`）：
+> ⚠️ **仓库里不包含任何真实凭据**：模板里的 cookie、密钥、邮箱密码全是空的，**需要你自己填写**。
+> 全部留空也能浏览公开榜单，但采集（B 站登录态）、AI 审核、第三方登录、邮箱验证码会不可用。
 
-| 变量 | 说明 |
-|---|---|
-| `PORT` | 后端端口，默认 `1003` |
-| `BILIBILI_COOKIE` | B 站登录态 cookie 串（`name=value; ...`），用于空间信息等需登录接口 |
-| `FRONTEND_URL` | 前端地址，OAuth 回调成功后跳转目标 |
-| `SESSION_SECRET` | 会话签名密钥，生产必改 |
-| `AI_REVIEW_BASE` / `AI_REVIEW_KEY` / `AI_REVIEW_MODEL` | AI 审核服务（OpenAI 兼容接口） |
-| `CCCYUN_*` / `OAUTH_TYPES` | 彩虹聚合登录（QQ / 微信） |
-| `SMTP_*` | 邮箱验证码登录 |
+```bash
+cd apps/api
+cp .env.example .env     # 然后照模板里的注释把值填进去
+```
+
+配置在 `apps/api/.env`（模板 [`apps/api/.env.example`](apps/api/.env.example)）：
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `PORT` | 否 | 后端端口，默认 `1003` |
+| `BILIBILI_COOKIE` | 建议填 | B 站登录态 cookie 串（`name=value; ...`）。浏览器登录后从开发者工具 → Application → Cookies 复制，至少含 `SESSDATA` / `bili_jct` / `DedeUserID`；用于空间信息等需登录接口，缺失时启动日志会出现 `[BiliApi -101] 账号未登录` |
+| `SESSDATA` | 否 | 遗留项：`config.js` 会读取，当前无实际使用 |
+| `FRONTEND_URL` | 否 | 前端地址，OAuth 回调成功后跳转目标，默认 `http://localhost:1005` |
+| `SESSION_SECRET` | 生产必填 | 会话签名密钥；留空会退化成代码里不安全的开发默认值 |
+| `AI_REVIEW_ENABLED` / `AI_REVIEW_BASE` / `AI_REVIEW_KEY` / `AI_REVIEW_MODEL` | 否 | AI 审核服务（OpenAI 兼容接口）；不填 = 跳过审核、不拦截收录 |
+| `CCCYUN_*` / `OAUTH_TYPES` | 否 | 彩虹聚合登录（QQ / 微信），需到 cccyun 平台申请 appid / appkey（模板里的 `CCCYUN_APPKEY` 是上游示例值，必须替换） |
+| `SMTP_*` | 否 | 邮箱验证码登录；`SMTP_ENABLED=false` 时整体停用 |
+| `CACHE_DIR` | 否 | 缓存目录，默认 `apps/api/cache` |
+| `PENDING_MAX_ATTEMPTS` | 否 | 待审池单条重试次数，默认 `5` |
+| `VOCABILI_THROTTLE_MS` | 否 | vocabili 同步节流毫秒，默认 `250` |
+
+> `.env` 已被 `.gitignore` 忽略（`.env.example` 是唯一例外），不会被提交。
 
 ## 榜单规则
 

@@ -28,6 +28,8 @@ apps/api/*.log
 # ---------- 运行日志（服务/预览/dev server，可重建） ----------
 *.log
 !1/.workbuddy/tmp/*.log
+*.err
+_web_*
 
 # ---------- 临时备份残留（改代码时的手工 .bak-<时间戳>，正式备份在 .workbuddy/backups/） ----------
 *.bak-*
@@ -52,17 +54,32 @@ tmp-*
 tmp_*
 tmp-ui/
 
+# ---------- 临时目录（wizard / 本地试验产物，勿入库） ----------
+tmp/
+.tmp/
+_tmp/
+
 # ---------- Playwright MCP 运行日志/截图（含验证码截图，勿入库） ----------
 .playwright-mcp/
 
 # ---------- 参考站整站镜像 ----------
 /1/
 
-# ---------- 参考站截图（体积大；DOM/资源快照仍保留） ----------
-.reference/**/shots/
-.reference/**/*.png
-.reference/**/*.jpg
-.reference/**/*.jpeg
+# ---------- 开发过程资料与第三方参考代码（只在本地保留，不随仓库发布） ----------
+# 开发记忆 / 助手工作区 / 备份
+.workbuddy/
+.workbuddy-ai/
+# 参考站页面 / 接口 / DOM 快照与参考资料
+.reference/
+参考文件/
+# 彩虹聚合登录官方 PHP 示例 SDK（第三方参考代码，与本项目 Node 后端无关）
+/SDK/
+# 一次性环境安装脚本（仅供本地使用，不入库）
+/scripts/install-gh-windows.sh
+# 开发期截图 / 对比图
+home-before.png
+*.before.png
+*.after.png
 
 # ---------- 编辑器 / 系统 ----------
 .vscode/
