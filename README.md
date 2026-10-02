@@ -79,6 +79,22 @@ npm run dev          # 同时启动 api(1003) + web(1005)
 - 真实身份由 `.mailmap` + 仓库级 `git config` 保证，GitHub Contributors 图显示的是你本人；
 - 完整说明见 [`docs/对接文档.md` §0.7](docs/对接文档.md)。
 
+## 功能测试
+
+`preflight` 只能证明「语法合法、没泄密、服务活着」，功能测试才真的去调接口、
+用 Chromium 打开页面（需要服务先起着：`npm run svc:start`）。
+
+| 命令 | 覆盖 |
+|---|---|
+| `npm run test:api` | 47 个接口用例（30 只依赖本服务 + 17 真调 B 站） |
+| `npm run test:browser` | 17 个页面，真实 Chromium，校验文案/字数/无报错 |
+| `npm test` | 两部分都跑 |
+| `npm run verify` | `preflight` + `test:api`，推送前最省事的一条 |
+
+用例里的 aid / mid / 歌手 id 全部从 `/api/board/all` 现取，不写死——写死的 id 只能测出
+「那个 id 还在不在」，测不出「接口取不到数据了」。已知的接口行为缺陷记在
+[`docs/对接文档.md` §0.8](docs/对接文档.md)。
+
 > ⚠️ **仓库里不包含任何真实凭据**：`.env.example` 中的 cookie、密钥、邮箱密码一律为空，
 > 这些值**需要你自己填写**。全部留空也能浏览公开榜单，但采集（B 站登录态）、AI 审核、
 > 第三方登录、邮箱验证码会不可用。
