@@ -3,9 +3,11 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 // 隧道域名白名单：vite 5.4.12+ 默认校验 Host 头以防 DNS rebinding，
-// 隧道转发过来的 Host 是 xxx.trycloudflare.com，不加白名单会直接被 403。
-// 只放行 trycloudflare.com 子域，不用 `true`（那等于关掉整个防护）。
-const TUNNEL_HOSTS = [".trycloudflare.com"];
+// 隧道转发过来的 Host 是隧道域名，不加白名单会直接被 403。
+// 只放行已知的隧道域名后缀，不用 `true`（那等于关掉整个防护）。
+//   .ciallo.ltd        —— 命名隧道 vocaloid.ciallo.ltd（当前正式入口，域名固定）
+//   .trycloudflare.com —— quick tunnel 临时域名（保留作应急，域名每次重建都会变）
+const TUNNEL_HOSTS = [".ciallo.ltd", ".trycloudflare.com"];
 
 // 前端所有请求都走相对路径 /api/*，经代理转发到本机后端。
 // 于是隧道只需要暴露一个端口，API 与页面同源，没有 CORS 问题。
