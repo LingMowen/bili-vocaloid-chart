@@ -230,11 +230,21 @@ function launchViaWmi(svc) {
     args.map((a) => `"${a}"`).join(" ") +
     ` >> "${outLog}" 2>> "${errLog}""`;
 
+  // 3. 必须带 DETACHED_PROCESS（0x8），让它彻底没有控制台。
+  //    实测：不加时 WMI 建出来的 cmd.exe 仍挂在启动它的那个控制台上，控制台收到
+  //    CTRL_C_EVENT 时会一并把它带走 —— 表现是日志里莫名多出一行 `^C`（cmd.exe
+  //    自己打印的），然后服务就没了。这不是「DSH 退出才死」，是每次启动它的那条
+  //    pwsh 命令结束就可能死，比 Job 对象还阴。
+  //    DETACHED_PROCESS 让进程完全脱离控制台，CTRL_C/CTRL_CLOSE 事件根本送不到它，
+  //    这才是「脱离」该有的样子。CREATE_NO_WINDOW(0x08000000) 不行：它只是不给窗口，
+  //    控制台还在，照样能收到 CTRL_C。
   const script = [
     "$ErrorActionPreference = 'Stop'",
+    "$si = New-CimInstance -ClassName Win32_ProcessStartup -Namespace root/cimv2 -ClientOnly -Property @{ CreateFlags = [uint32]0x00000008 }",
     "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{",
     `  CommandLine = '${psQuote(cli)}'`,
     `  CurrentDirectory = '${psQuote(svc.cwd)}'`,
+    "  ProcessStartupInformation = $si",
     "}",
     `Set-Content -LiteralPath '${psQuote(resultFile)}' -Value ("WMIOK " + $r.ProcessId + " " + $r.ReturnValue) -Encoding ASCII`,
   ].join("\n");

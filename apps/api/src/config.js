@@ -23,7 +23,17 @@ module.exports = {
   },
   rankMaxPs: 50,
   searchMaxPage: 20,
+  // 本机开发时的前端地址，也是「来源无法判定」时的兜底。
+  // 公网访问时不要指望这个值：隧道域名会变，写死只会把访客送回他自己的电脑。
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:1005",
+  // 公网来源白名单（逗号分隔的 host，如 `a.example.com,.trycloudflare.com`）。
+  // 以 `.` 开头表示后缀匹配，用来适配 quick tunnel 每次重建都换域名的特性。
+  // 为什么必须白名单：来源直接决定 OAuth 回调的 redirect_uri 与 token 的落点，
+  // 不校验 Host 就等于开放重定向。
+  publicOrigins: (process.env.PUBLIC_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
   sessionSecret:
     process.env.SESSION_SECRET || "bili-vocaloid-chart-dev-secret-change-me",
   cccyun: {
