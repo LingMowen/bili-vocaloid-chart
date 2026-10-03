@@ -289,21 +289,32 @@ if (!dirty) {
 
 section("7. 服务健康");
 
-const URLS = [
-  { url: "http://127.0.0.1:1003/api/stats", label: "API 1003" },
-  { url: "http://127.0.0.1:1005/", label: "Web 1005" },
-];
-for (const u of URLS) {
+function probeCode(url) {
   try {
-    const r = execSync(`curl -s -o NUL -w "%{http_code}" --max-time 5 ${u.url}`, {
+    return execSync(`curl -s -o NUL -w "%{http_code}" --max-time 5 ${url}`, {
       encoding: "utf8",
       shell: "cmd.exe",
     }).trim();
-    if (r === "200") record("ok", `${u.label} 在线`, "200");
-    else record("WARN", `${u.label} 返回 ${r}`, u.url);
   } catch {
-    record("WARN", `${u.label} 探不到（服务没起？）`, u.url);
+    return "";
   }
+}
+
+const apiCode = probeCode("http://127.0.0.1:1003/api/stats");
+if (apiCode === "200") record("ok", "API 1003 在线", "200");
+else record("WARN", `API 1003 返回 ${apiCode || "无响应"}`, "http://127.0.0.1:1003/api/stats");
+
+// Web 有两个互斥模式：dev server 在 1005（本机开发用），preview 在 1007（对公网挂隧道）。
+// 只要求「至少一个在线」——正在用哪个由 node scripts/dev.js 决定，不是故障。
+const WEBS = [
+  { url: "http://127.0.0.1:1005/", label: "Web dev 1005" },
+  { url: "http://127.0.0.1:1007/", label: "Web preview 1007" },
+];
+const webUp = WEBS.map((w) => ({ ...w, code: probeCode(w.url) })).filter((w) => w.code === "200");
+if (webUp.length > 0) {
+  record("ok", `${webUp.map((w) => w.label).join(" / ")} 在线`, "200");
+} else {
+  record("WARN", "Web 1005/1007 都探不到（服务没起？）", "node scripts/dev.js start [--preview]");
 }
 
 /* ---------- 汇总 ---------- */

@@ -114,11 +114,32 @@ npm run dev:web      # 仅前端，vite
 
 | 用途 | 地址 |
 |---|---|
-| 前端 Web | http://localhost:1005 |
+| 前端 Web（dev） | http://localhost:1005 |
+| 前端 Web（preview） | http://localhost:1007 |
 | 后端 API | http://localhost:1003 |
 | 采集进度监控页 | http://127.0.0.1:1006/progress （仅本机可访问） |
 
-前端 Vite 通过 proxy 把 `/api` 转发到 `http://localhost:1003`。
+前端 Vite 通过 proxy 把 `/api` 转发到 `http://localhost:1003`（dev 与 preview 共用同一条代理）。
+
+## 挂到公网（Cloudflare 隧道）
+
+**要对公网开隧道，必须用 `--preview`，不要用 dev server。**
+
+```bash
+npm run build --workspace=apps/web      # 先出 dist
+npm run svc:start -- --preview          # API(1003) + preview(1007)
+cloudflared tunnel --url http://localhost:1007 --no-autoupdate
+```
+
+原因：dev server 会把**整个仓库**当静态根，`/@fs/<绝对路径>` 能原样读到仓库里的任何文件
+（实测 `.git/config`、25 MB 的 `apps/api/cache/library.json`、SQLite 用户库全部 200 返回，
+只有 `.env` 靠 vite 默认 `fs.deny` 挡住）。preview 只服务 `apps/web/dist/`，
+同样几条路径全部返回 `index.html` 的 SPA 回退，泄露面关闭。
+
+隧道域名要加进 vite 的 Host 白名单（否则 403），`apps/web/vite.config.js` 里
+`server.allowedHosts` 与 `preview.allowedHosts` 都已设为 `[".trycloudflare.com"]`。
+前端请求全走相对路径 `/api/*`，所以**隧道只需暴露 1007 一个端口**。
+细节见 [`docs/对接文档.md` §0.7](docs/对接文档.md)。
 
 ## 环境变量
 
