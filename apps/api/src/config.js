@@ -6,6 +6,55 @@ const path = require("node:path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const bool = (v, d = false) => (v == null ? d : /^(1|true|yes|on)$/i.test(String(v)));
+const list = (v) =>
+  String(v || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+// 第三方聚合登录：可同时挂多套服务商（协议相同，都是 connect.php?act=login + return.php），
+// 按渠道分流。为什么需要它：不同平台开通的渠道不一样 —— 本项目 mapay 只给
+// qq/wx/alipay 配了密钥（其余渠道返回 errcode 104「当前登录方式未配置密钥」），
+// 而 cc云 10 个渠道全开通，单一服务商覆盖不全。
+//
+// 三条规则，都有实测依据：
+// 1. 只有「可用」（appKey 非空）的服务商才参与路由。否则一个没配密钥的平台
+//    会凭默认 *_TYPES 把它声明的渠道全部抢走，登录必然失败（这个坑踩过，
+//    见 _tmp/probe-provider-compat.mjs 的「旧用户」场景）。
+// 2. 渠道在多个服务商里都声明时，取数组里靠前的（mapay 优先）。
+// 3. 路由表与对外渠道列表必须同源计算，否则「前端显示能点、后端说没服务商」。
+function buildOAuth() {
+  const defs = [
+    {
+      name: "mapay",
+      apiUrl: process.env.MAPAY_API_URL || "https://login.mapay.cn/",
+      appId: process.env.MAPAY_APPID || "0",
+      appKey: process.env.MAPAY_APPKEY || "",
+      callbackUrl: process.env.MAPAY_CALLBACK || "",
+      types: list(process.env.MAPAY_TYPES),
+    },
+    {
+      name: "cccyun",
+      apiUrl: process.env.CCCYUN_API_URL || "https://u.cccyun.cc/",
+      appId: process.env.CCCYUN_APPID || "1000",
+      appKey: process.env.CCCYUN_APPKEY || "1111111111111111111111111111",
+      callbackUrl:
+        process.env.CCCYUN_CALLBACK || "http://localhost:1003/api/auth/oauth/callback",
+      types: list(process.env.CCCYUN_TYPES),
+    },
+  ];
+  const usable = defs.filter((p) => p.appKey);
+  const route = new Map();
+  for (const p of usable) for (const t of p.types) if (!route.has(t)) route.set(t, p);
+  // 兼容旧的单一配置：只填了 CCCYUN_* + OAUTH_TYPES 的人，把整包渠道交给
+  // 第一个可用服务商（即 cc云），行为与改造前一致。
+  if (route.size === 0) {
+    const first = usable[0];
+    if (first) for (const t of list(process.env.OAUTH_TYPES || "qq,wx")) if (!route.has(t)) route.set(t, first);
+  }
+  return { usable, route, types: [...route.keys()] };
+}
+const oauth = buildOAuth();
 
 module.exports = {
   port: Number(process.env.PORT) || 1003,
@@ -36,57 +85,12 @@ module.exports = {
     .filter(Boolean),
   sessionSecret:
     process.env.SESSION_SECRET || "bili-vocaloid-chart-dev-secret-change-me",
-  // 第三方登录可以同时挂多套聚合登录服务商（协议相同，都是 connect.php?act=login
-  // + return.php），按渠道分流：某套没给某渠道配密钥时，那个渠道走另一套。
-  // 为什么需要它：mapay 应用只开通了 qq/wx/alipay，cc云开通了全部 10 个，
-  // 单一服务商无法覆盖全部渠道。
-  // 约定：OAUTH_PROVIDERS 里靠前的优先；某渠道在所有 provider 里都没声明就不可用。
-  // 两套的回调域名白名单都要各自放行实际访问的域名，否则 connect.php 会返回
-  // errcode 103「回调域名未授权」。
-  oauthProviders: [
-    {
-      name: "mapay",
-      apiUrl: process.env.MAPAY_API_URL || "https://login.mapay.cn/",
-      appId: process.env.MAPAY_APPID || "0",
-      appKey: process.env.MAPAY_APPKEY || "",
-      callbackUrl: process.env.MAPAY_CALLBACK || "",
-      types: (process.env.MAPAY_TYPES || "qq,wx,alipay")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    },
-    {
-      name: "cccyun",
-      apiUrl: process.env.CCCYUN_API_URL || "https://u.cccyun.cc/",
-      appId: process.env.CCCYUN_APPID || "1000",
-      appKey: process.env.CCCYUN_APPKEY || "1111111111111111111111111111",
-      callbackUrl:
-        process.env.CCCYUN_CALLBACK || "http://localhost:1003/api/auth/oauth/callback",
-      types: (process.env.CCCYUN_TYPES || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    },
-  ],
-  // 对外暴露的渠道 = 各 provider 声明渠道的并集（按 provider 顺序去重）
-  oauthTypes: (() => {
-    const seen = new Set();
-    for (const p of [
-      ...(process.env.MAPAY_TYPES || "qq,wx,alipay").split(","),
-      ...(process.env.CCCYUN_TYPES || "").split(","),
-    ]) {
-      const t = p.trim();
-      if (t) seen.add(t);
-    }
-    // 兼容旧配置：两套都没显式声明时退回原来的 OAUTH_TYPES
-    if (seen.size === 0) {
-      for (const t of (process.env.OAUTH_TYPES || "qq,wx").split(",")) {
-        const v = t.trim();
-        if (v) seen.add(v);
-      }
-    }
-    return [...seen];
-  })(),
+  // 参与路由的服务商（已剔除没配密钥的）与「渠道 → 服务商」表。
+  // auth.js 直接用 route.get(type)，不再自己算，避免两处逻辑漂移。
+  oauthProviders: oauth.usable,
+  oauthRoute: oauth.route,
+  // 对外暴露的渠道 = 路由表的键，与 oauthRoute 严格同源
+  oauthTypes: oauth.types,
   smtp: {
     enabled: bool(process.env.SMTP_ENABLED, false),
     host: process.env.SMTP_HOST || "",

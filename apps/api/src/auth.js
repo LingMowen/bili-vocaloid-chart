@@ -6,20 +6,11 @@ const config = require("./config");
 const { stmts, findUser } = require("./db");
 
 const OAUTH_TYPES = config.oauthTypes || ["qq", "wx"];
-// 渠道 → 服务商 的路由表：按 config.oauthProviders 顺序建，先声明的优先。
-// 两个 provider 都声明同一渠道时取靠前那个（mapay 优先，因为它是当前主用）。
-const PROVIDER_BY_TYPE = (() => {
-  const m = new Map();
-  for (const p of config.oauthProviders || []) {
-    for (const t of p.types || []) {
-      if (!m.has(t)) m.set(t, p);
-    }
-  }
-  return m;
-})();
-// 取某渠道的服务商；找不到就退回第一个 provider（保证旧单套配置仍能跑）
+// 渠道 → 服务商 的路由表由 config 单点算好（含「剔除没配密钥的服务商」这条规则）。
+// 这里不再自己兜底取第一个 provider —— 那样会把渠道交给一个没配密钥的平台，
+// 表现为「点了登录但报回调域名未授权 / 未配置密钥」，不如直接明确拒绝。
 function providerFor(type) {
-  return PROVIDER_BY_TYPE.get(type) || (config.oauthProviders || [])[0] || null;
+  return config.oauthRoute.get(type) || null;
 }
 const OAUTH_STATE_COOKIE = "oauth_state";
 const CODE_TTL_MS = 5 * 60 * 1000;
