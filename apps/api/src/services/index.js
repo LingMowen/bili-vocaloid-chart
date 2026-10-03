@@ -953,21 +953,108 @@ const ACH_COUNT_WINDOWS = {
   daily_potential_regular: { window: 15, need: 10 },
 };
 
+// 类别归属榜单：日刊门番系只由日刊榜产出，其余四类只由周刊榜产出。
+// 对齐 vocabili —— 其 achievement 记录的 board 字段就是这么分的（daily x8 全是 daily_*，weekly x12 全是另四类），
+// 成就页的 weekly / daily 两个 tab 也正好对应这张表。不加限定会让「日刊门番」出现在月榜/年榜上。
+const ACH_BOARD_CATEGORIES = {
+  daily: ["daily_regular", "daily_potential_regular"],
+  weekly: ["emerging_hit", "mega_hit", "potential_regular", "regular"],
+};
+
 function periodDaysOf(board) {
   return board === "daily" ? 1 : board === "weekly" ? 7 : board === "monthly" ? 30 : 365;
 }
 
+// 档案指纹（只 stat 不读内容）：档案增删改后自动失效，不会读到旧结果。
+function statSafe(p) {
+  try {
+    const s = fs.statSync(p);
+    return `${s.mtimeMs}:${s.size}`;
+  } catch {
+    return "x";
+  }
+}
+
+// 让出事件循环：单个榜的档案可达 100MB，逐份 readFileSync 会把 API 卡住数秒。
+const yieldToLoop = () => new Promise((r) => setImmediate(r));
+
+function archiveFingerprint(board) {
+  const parts = [statSafe(path.join(CACHE_DIR, `board_${board}.json`))];
+  const dir = path.join(ARCHIVE_DIR, board);
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+  } catch {
+    files = [];
+  }
+  files.sort();
+  for (const f of files) parts.push(`${f}=${statSafe(path.join(dir, f))}`);
+  return parts.join("|");
+}
+
+// 一次扫描算出该榜全部 6 类成就，按档案指纹缓存。
+// 单个榜档案可达 100MB，按类别重复扫描是这一块的主要开销（成就页 6 个面板 = 6 次全量读）。
+const _achCache = new Map(); // board -> { fp, data }
+const _achBuilding = new Map(); // board -> Promise（并发请求共享同一次构建）
+
+async function buildAllByBoard(board) {
+  const fp = archiveFingerprint(board);
+  const cached = _achCache.get(board);
+  if (cached && cached.fp === fp) return cached.data;
+  const inflight = _achBuilding.get(board);
+  if (inflight) return inflight;
+  const p = (async () => {
+    try {
+      const data = await scanBoardAchievements(board);
+      _achCache.set(board, { fp: archiveFingerprint(board), data });
+      return data;
+    } finally {
+      _achBuilding.delete(board);
+    }
+  })();
+  _achBuilding.set(board, p);
+  return p;
+}
+
+async function buildAchievementsByBoard(board, type) {
+  const all = board === "all" ? await buildAllBoards() : await buildAllByBoard(board);
+  if (!type || type === "all") return all;
+  return { ...all, items: all.items.filter((x) => x.category === type) };
+}
+
+// 全部榜单混排（对齐 vocabili 首页「成就速递」：它调 /achievement 不传 board，一次拿到跨榜结果）。
+// 各榜期号体系不同（本站 daily 5900 / weekly 843），所以按 achieved_date 倒序，不能比期号。
+const ALL_BOARDS = ["daily", "weekly", "monthly", "annual"];
+const _achAllCache = { fp: null, data: null };
+
+async function buildAllBoards() {
+  const fp = ALL_BOARDS.map((b) => `${b}:${archiveFingerprint(b)}`).join("||");
+  if (_achAllCache.fp === fp && _achAllCache.data) return _achAllCache.data;
+  const items = [];
+  for (const b of ALL_BOARDS) {
+    const one = await buildAllByBoard(b);
+    for (const it of one.items) items.push({ ...it, board: b });
+  }
+  items.sort((a, b) => String(b.achieved_date || "").localeCompare(String(a.achieved_date || "")));
+  const data = { items, issue: null, periods_available: null, has_gap: false };
+  _achAllCache.fp = fp;
+  _achAllCache.data = data;
+  return data;
+}
+
 // 从全部历史期归档中，按成就类别筛选（含掉榜歌曲）
-function buildAchievementsByBoard(board, type) {
+async function scanBoardAchievements(board) {
   const periods = [];
   const cur = readCacheJson(`board_${board}.json`);
   if (cur && Array.isArray(cur.list)) periods.push(cur);
   try {
     const dir = path.join(ARCHIVE_DIR, board);
     const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".json")) : [];
+    let n = 0;
     for (const f of files) {
       const d = readBoardCache(board, f);
       if (d && Array.isArray(d.list)) periods.push(d);
+      if (++n % 4 === 0) await yieldToLoop();
     }
   } catch (e) {
     /* ignore */
@@ -987,10 +1074,13 @@ function buildAchievementsByBoard(board, type) {
   // 全部有效期号（按日期升序）——连续 streak / 滑窗计数都要基于"全期序列"，
   // 不能只在歌曲上榜的期里数（那样掉榜不会打断 streak）。
   const orderedIssues = merged.map((p) => Number(p.issue)).filter((n) => Number.isFinite(n));
+  // 期号 -> 该期起始日期：跨榜混排按达成日期倒序时需要（各榜期号体系不同，不能直接比期号）
+  const issueDate = new Map();
   const songMap = new Map();
   for (const p of merged) {
     const issue = Number(p.issue);
     const date = p.date_start || String(p.issue);
+    issueDate.set(String(issue), date);
     for (const it of p.list || []) {
       const aid = String(it.aid);
       let s = songMap.get(aid);
@@ -1004,7 +1094,9 @@ function buildAchievementsByBoard(board, type) {
     }
   }
   const items = [];
+  let scanned = 0;
   for (const s of songMap.values()) {
+    if (++scanned % 500 === 0) await yieldToLoop();
     const recs = s.records.sort((a, b) =>
       a.date === b.date ? a.issue - b.issue : String(a.date).localeCompare(String(b.date)),
     );
@@ -1048,40 +1140,31 @@ function buildAchievementsByBoard(board, type) {
       return { ok: cnt >= need, cnt, hitIssue, total: recs.length, win, need };
     };
 
-    let achieved = null;
-    let achievedRank = 0;
-
-    // vocabili 对齐类型的判定
+    // vocabili 对齐类型的判定：一次扫描把该榜应产出的类别全部算出来，每达成一类产出一条。
+    // 这样 /api/achievements?type=all 与首页跨榜混排都只读一遍档案。
     const win = orderedIssues.length;
-    let extraMeta = null;
-    let hit = false;
-    if (type === "emerging_hit") {
-      hit = best5 >= 3;
-      if (hit) { achieved = hit5Issue; }
-      extraMeta = { streak: best5, window: win, need: 3 };
-    } else if (type === "mega_hit") {
-      hit = best3 >= 5;
-      if (hit) { achieved = hit3Issue; }
-      extraMeta = { streak: best3, window: win, need: 5 };
-    } else if (ACH_COUNT_WINDOWS[type]) {
-      const c = countHit(type);
-      hit = c.ok;
-      if (hit) { achieved = c.hitIssue; }
-      extraMeta = { onBoard: c.cnt, window: c.win, need: c.need, total: c.total };
+    const cats = ACH_BOARD_CATEGORIES[board] || [];
+    const hits = [];
+    if (cats.includes("emerging_hit")) {
+      hits.push({ category: "emerging_hit", ok: best5 >= 3, issue: hit5Issue, meta: { streak: best5, window: win, need: 3 } });
     }
+    if (cats.includes("mega_hit")) {
+      hits.push({ category: "mega_hit", ok: best3 >= 5, issue: hit3Issue, meta: { streak: best3, window: win, need: 5 } });
+    }
+    for (const key of cats) {
+      if (!ACH_COUNT_WINDOWS[key]) continue;
+      const c = countHit(key);
+      hits.push({
+        category: key,
+        ok: c.ok,
+        issue: c.hitIssue,
+        meta: { onBoard: c.cnt, window: c.win, need: c.need, total: c.total },
+      });
+    }
+    const achievedHits = hits.filter((h) => h.ok);
+    if (!achievedHits.length) continue;
 
-    const ach = {
-      emerging_hit: best5 >= 3,
-      mega_hit: best3 >= 5,
-    };
-    if (ACH_COUNT_WINDOWS[type]) ach[type] = hit;
-    if (!ach[type]) continue;
     const it = s.it;
-    const rank = Number(it.score_rank) || 0;
-    if (achieved == null) {
-      achieved = recs[recs.length - 1].issue;
-      achievedRank = rank;
-    }
     // 日刊门番卡片需要的统计：上榜期数 / 总期数 / 当前连续在榜期数（从最新期往回数）
     const onBoardCountAll = recs.filter((r) => r.rank >= 1 && r.rank <= 20).length;
     let tailStreak = 0;
@@ -1089,22 +1172,25 @@ function buildAchievementsByBoard(board, type) {
       if (ranks[orderedIssues[i]] != null) tailStreak++;
       else break;
     }
-    items.push({
-      category: type,
-      song_id: s.aid,
-      song: toSongItem(it),
-      ranks,
-      progress: achievedRank ? String(achievedRank) : "1",
-      start_issue: recs[0].issue,
-      end_issue: recs[recs.length - 1].issue,
-      achieved_issue: achieved,
-      dropped_issue: null,
-      // 对齐 vocabili 日刊门番卡片的统计字段
-      on_board_count: onBoardCountAll,
-      total_count: recs.length,
-      streak: tailStreak,
-      ...(extraMeta ? { meta: extraMeta } : {}),
-    });
+    for (const h of achievedHits) {
+      const achievedIssue = h.issue ?? recs[recs.length - 1].issue;
+      items.push({
+        category: h.category,
+        song_id: s.aid,
+        song: toSongItem(it),
+        ranks,
+        start_issue: recs[0].issue,
+        end_issue: recs[recs.length - 1].issue,
+        achieved_issue: achievedIssue,
+        // 达成日期（期号 -> date_start）：跨榜混排按它倒序，避免用期号比大小（各榜期号体系不同）
+        achieved_date: issueDate.get(String(achievedIssue)) ?? null,
+        dropped_issue: null,
+        on_board_count: onBoardCountAll,
+        total_count: recs.length,
+        streak: tailStreak,
+        meta: h.meta,
+      });
+    }
   }
   items.sort((a, b) => Number(a.achieved_issue) - Number(b.achieved_issue));
   // periods_available / has_gap：本站该榜可用历史期数，以及历史是否存在断档。
@@ -1128,13 +1214,17 @@ function buildAchievementsByBoard(board, type) {
   };
 }
 
-// opts: { board: 'weekly'|'daily'|'monthly'|'annual', type, status, page, pageSize }
+// opts: { board: 'weekly'|'daily'|'monthly'|'annual'|'all', type, status, page, pageSize }
+// board 传 "all" 时跨榜混排（对齐 vocabili 首页「成就速递」）；
+// type 传 "all"（或不传类别白名单外的值）时返回该榜全部 6 类达成项。
 async function achievements(opts = {}) {
-  const board = ["daily", "weekly", "monthly", "annual"].includes(opts.board) ? opts.board : "weekly";
-  const type = ACH_CATEGORIES.some((c) => c.key === opts.type) ? String(opts.type) : "emerging_hit";
+  const rawBoard = String(opts.board ?? "");
+  const board = rawBoard === "all" ? "all" : ["daily", "weekly", "monthly", "annual"].includes(rawBoard) ? rawBoard : "weekly";
+  const rawType = String(opts.type ?? "");
+  const type = rawType === "all" ? "all" : ACH_CATEGORIES.some((c) => c.key === rawType) ? rawType : "emerging_hit";
   const page = Math.max(1, Number(opts.page) || 1);
   const pageSize = Math.max(1, Math.min(60, Number(opts.pageSize) || 20));
-  const result = buildAchievementsByBoard(board, type);
+  const result = await buildAchievementsByBoard(board, type);
   const total = result.items.length;
   return {
     board,
