@@ -58,12 +58,20 @@ function makeState(type) {
 function verifyState(type, state) {
   const [ts, sig] = String(state || "").split(".");
   if (!ts || !sig) return false;
+  // 先校验时间戳本身是数字：非数字会让 Date.now() - NaN 变成 NaN，
+  // 而 `NaN > TTL` 恒为 false，等于把过期判断整个绕过。
+  if (!/^\d+$/.test(ts)) return false;
   if (Date.now() - Number(ts) > STATE_TTL_MS) return false;
   const expect = crypto
     .createHmac("sha256", config.cccyun.appKey)
     .update(`${type}:${ts}`)
     .digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect));
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expect);
+  // timingSafeEqual 要求两边字节数相同，否则抛异常（表现为 500，而不是校验失败）。
+  // 签名长度不对说明这压根不是我们签的，直接判失败即可。
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 // 不引入 cookie-parser，手动解析即可（只需读一个自建 cookie）
@@ -94,16 +102,58 @@ function cccyunGet(params) {
     .catch((e) => ({ code: -1, msg: `cccyun 请求失败: ${e.message}` }));
 }
 
-function cccyunLogin(type) {
+function cccyunLogin(type, redirectUri) {
   const state = makeState(type);
   return cccyunGet({
     act: "login",
     appid: config.cccyun.appId,
     appkey: config.cccyun.appKey,
     type,
-    redirect_uri: config.cccyun.callbackUrl,
+    redirect_uri: redirectUri || config.cccyun.callbackUrl,
     state,
   }).then((arr) => ({ arr, state }));
+}
+
+// 该 host 是否允许当作「访客看到的来源」
+function hostAllowed(hostname) {
+  const h = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (!h) return false;
+  // 环回地址：本机开发，任意端口都放行
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1") return true;
+  // 已配置的前端地址 / 回调地址（取其 host，兼容各自换过端口的历史）
+  for (const cfgUrl of [config.frontendUrl, config.cccyun.callbackUrl]) {
+    try {
+      if (new URL(cfgUrl).hostname.toLowerCase() === h) return true;
+    } catch {
+      /* 配置项非法就跳过，不影响其余判据 */
+    }
+  }
+  // 显式白名单：`a.example.com` 精确匹配，`.example.com` 后缀匹配
+  return config.publicOrigins.some((p) => (p.startsWith(".") ? h.endsWith(p) : h === p));
+}
+
+// 从请求里推断「访客看到的来源」，用来拼 OAuth 的 redirect_uri。
+// 为什么不能写死：隧道域名每次重建都会变，写死只会把公网访客送回他自己的电脑。
+// 为什么必须过白名单：这个值会进入 redirect_uri，不校验就是开放重定向。
+// 为什么环回要改写成 127.0.0.1：cc云平台侧授权的是 IP 形式，localhost 会被判
+// 「回调域名未授权」；而两者本就是同一台机器，端口保持原样。
+function requestOrigin(req) {
+  const rawHost = String(req.headers.host || "").trim();
+  if (!rawHost) return null;
+  const hostname = rawHost.replace(/:\d+$/, "");
+  if (!hostAllowed(hostname)) return null;
+  let host = rawHost;
+  if (hostname === "localhost" || hostname === "::1") {
+    const port = rawHost.match(/:(\d+)$/);
+    host = `127.0.0.1${port ? `:${port[1]}` : ""}`;
+  }
+  // 经隧道时 cloudflared 会带上 x-forwarded-proto: https
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  const proto = forwardedProto === "https" || (!forwardedProto && req.secure) ? "https" : "http";
+  return `${proto}://${host}`;
 }
 
 function cccyunCallback(type, code) {
@@ -167,7 +217,14 @@ function makeRouter() {
       if (!OAUTH_TYPES.includes(type)) {
         return res.status(400).json({ ok: false, message: "不支持的登录方式" });
       }
-      const { arr, state } = await cccyunLogin(type);
+      // 回调地址按「访客实际访问的来源」拼，而不是用 .env 里写死的本机地址：
+      // 公网访客拿到的 redirect_uri 必须指回公网域名，否则浏览器会被送回
+      // 他自己的 127.0.0.1。来源不在白名单内时退回配置值（本地开发照旧可用）。
+      const origin = requestOrigin(req);
+      const redirectUri = origin
+        ? `${origin}/api/auth/oauth/callback`
+        : config.cccyun.callbackUrl;
+      const { arr, state } = await cccyunLogin(type, redirectUri);
       if (!arr || arr.code !== 0 || !arr.url) {
         return res.status(502).json({ ok: false, message: (arr && arr.msg) || "获取授权地址失败" });
       }
@@ -217,7 +274,12 @@ function makeRouter() {
         Date.now(),
       );
       const token = issueToken(row.id);
-      const target = config.frontendUrl.replace(/\/$/, "");
+      // 回调端点与前端同源（公网走隧道域名、本地走 vite 代理的 1005/1007），
+      // 所以优先用相对路径：浏览器按当前来源解析，token 永远不会被送到别的域。
+      // 只有在来源无法判定时才退回配置的绝对地址。
+      const target = requestOrigin(req)
+        ? ""
+        : config.frontendUrl.replace(/\/$/, "");
       res.redirect(`${target}/auth/success?token=${encodeURIComponent(token)}`);
     } catch (e) {
       next(e);
