@@ -4,58 +4,11 @@ import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import Modal from "./ui/Modal.jsx";
 import Tip from "./ui/Tip.jsx";
-import {
-  X,
-  ChevronDown,
-  Wallet,
-  Eye,
-  PawPrint,
-  Flower2,
-  Smartphone,
-  Music2,
-  MessageSquare,
-} from "lucide-react";
+import BrandIcon, { BRAND_COLORS } from "./BrandIcons.jsx";
+import { X, ChevronDown } from "lucide-react";
 
 // 主推的三个渠道，直接展示；其余收进「更多登录方式」
 const PRIMARY_OAUTH = ["qq", "wx", "bilibili"];
-
-function QQIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M3 8.2a7.2 7.2 0 012.1-4.2c1.6-1.5 3.6-2 4.9-1.3.4 2.3-.9 4.6-1.4 6.2l.1 2c.6-.9 1.5-1.6 2.3-1.6 2.1 0 3.8 3.1 3.3 6.7-.3 2.5-1.6 4.5-3.4 5.1-.8.3-1.6.3-2.3.1-2.5-.6-4-2.9-3.4-5.2-.4-.3-.7-.7-.9-1.1-1.9.2-3.1 2.4-2.4 4.4-1.5-1-2.5-3-2.1-5.2C.5 14.4 1 11 3 8.2z" /></svg>
-  );
-}
-
-function WeChatIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M9.4 4C5.4 4 2 6.9 2 10.4c0 1.9 1 3.7 2.7 5-.3 1.2-1 2.4-1.6 3 .1-.4 1-1 1.2-1.4.6.3 1.3.5 2 .6-.8 1.5-2.9 2.5-4.9 2.4 1.9 1.3 4.4 2.1 6.9 2.1 4 0 7.4-2.9 7.4-6.4C16 8.8 13.1 4 9.4 4zM6.4 8.8c-.6 0-1-.5-1-1s.4-1 1-1 1 .4 1 1-.4 1-1 1zm5.9 0c-.6 0-1-.5-1-1s.4-1 1-1 1 .4 1 1-.4 1-1 1zM22 14.1c0-2.7-2.6-4.9-5.9-4.9s-5.9 2.2-5.9 4.9 2.6 4.9 5.9 4.9c.6 0 1.2-.1 1.8-.3l1.8 1-.5-1.5c1.8-1 2.8-2.4 2.8-4.1zm-7.9-1.6c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7zm3.9 0c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7z" /></svg>
-  );
-}
-
-function BilibiliIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-5 w-5">
-      <path d="M6.6 3.2 8.2 6.6" />
-      <path d="M17.4 3.2 15.8 6.6" />
-      <rect x="3.8" y="6.6" width="16.4" height="13.2" rx="3.6" />
-      <path d="M9 11.6v2.6" />
-      <path d="M15 11.6v2.6" />
-    </svg>
-  );
-}
-
-// 各渠道图标：qq / wx / bilibili 为手写品牌形，其余用 lucide 近似图标
-const OAUTH_ICONS = {
-  qq: QQIcon,
-  wx: WeChatIcon,
-  bilibili: BilibiliIcon,
-  alipay: (p) => <Wallet {...p} />,
-  sina: (p) => <Eye {...p} />,
-  baidu: (p) => <PawPrint {...p} />,
-  huawei: (p) => <Flower2 {...p} />,
-  xiaomi: (p) => <Smartphone {...p} />,
-  douyin: (p) => <Music2 {...p} />,
-  dingtalk: (p) => <MessageSquare {...p} />,
-};
 
 export default function AuthModal({ open, onClose }) {
   const { t } = useTranslation();
@@ -148,7 +101,7 @@ export default function AuthModal({ open, onClose }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} maxWidth="max-w-sm">
+    <Modal open={open} onClose={onClose} maxWidth="max-w-md">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-base font-bold">{t("auth.loginTitle")}</h3>
         <Tip content={t("auth.close")}>
@@ -158,7 +111,8 @@ export default function AuthModal({ open, onClose }) {
         </Tip>
       </div>
 
-      {(smtpReady || oauth.length > 0) && (
+      {/* 只有一个登录方式时不给切换条：单按钮的分段控件看着像多余的大按钮 */}
+      {smtpReady && oauth.length > 0 && (
         <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1">
           {oauth.length > 0 && (
             <button
@@ -188,36 +142,55 @@ export default function AuthModal({ open, onClose }) {
           const sorted = [...oauth].sort((a, b) => rank(a) - rank(b));
           const primary = sorted.filter((x) => rank(x) !== Number.MAX_SAFE_INTEGER);
           const rest = sorted.filter((x) => rank(x) === Number.MAX_SAFE_INTEGER);
-          const btn = (type) => {
-            const Icon = OAUTH_ICONS[type];
-            return (
-              <button
-                key={type}
-                onClick={() => startOauth(type)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:border-primary/40 hover:text-primary"
-              >
-                {Icon ? <Icon className="h-5 w-5" /> : null}
-                {OAUTH_LABELS[type] || type}
-              </button>
-            );
-          };
+          // 图标用品牌色常显：第三方登录按钮的通行做法，识别度远高于单色灰。
+          // 颜色通过 --brand 变量传给 Tailwind 任意值类，避免为 10 个渠道各写一套工具类。
+          // 主推渠道用竖排卡片：图标在上、文字在下，三列一行放完，比三行通栏更紧凑
+          const card = (type) => (
+            <button
+              key={type}
+              onClick={() => startOauth(type)}
+              style={{ "--brand": BRAND_COLORS[type] }}
+              className="flex min-w-0 flex-col items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-3 text-xs font-medium transition-colors hover:border-[var(--brand)] hover:bg-accent"
+            >
+              <BrandIcon type={type} className="h-6 w-6 text-[var(--brand)]" />
+              <span className="w-full truncate text-center">{OAUTH_LABELS[type] || type}</span>
+            </button>
+          );
+          // 其余渠道用横排小按钮，两列，省高度
+          const row = (type) => (
+            <button
+              key={type}
+              onClick={() => startOauth(type)}
+              style={{ "--brand": BRAND_COLORS[type] }}
+              className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-2 text-xs font-medium transition-colors hover:border-[var(--brand)] hover:bg-accent"
+            >
+              <BrandIcon type={type} className="h-[18px] w-[18px] shrink-0 text-[var(--brand)]" />
+              <span className="truncate">{OAUTH_LABELS[type] || type}</span>
+            </button>
+          );
           return (
-            <div className="max-h-[65vh] space-y-2 overflow-y-auto">
-              {primary.map(btn)}
+            <div className="max-h-[65vh] overflow-y-auto">
+              <div className="grid grid-cols-3 gap-2">{primary.map(card)}</div>
+
               {rest.length > 0 && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => setShowMore((v) => !v)}
-                    className="flex w-full items-center justify-center gap-1 rounded-lg px-4 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {showMore ? t("auth.collapse") : t("auth.more")}
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} />
-                  </button>
-                  {showMore && <div className="space-y-2">{rest.map(btn)}</div>}
+                  <div className="my-3 flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border" />
+                    <button
+                      type="button"
+                      onClick={() => setShowMore((v) => !v)}
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {showMore ? t("auth.collapse") : t("auth.more")}
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} />
+                    </button>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                  {showMore && <div className="grid grid-cols-2 gap-2">{rest.map(row)}</div>}
                 </>
               )}
-              <p className="pt-1 text-center text-[11px] leading-relaxed text-muted-foreground">
+
+              <p className="pt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
                 {t("auth.oauthHint")}
               </p>
             </div>
