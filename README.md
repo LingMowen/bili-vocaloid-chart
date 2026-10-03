@@ -128,7 +128,18 @@ npm run dev:web      # 仅前端，vite
 ```bash
 npm run build --workspace=apps/web      # 先出 dist
 npm run svc:start -- --preview          # API(1003) + preview(1007)
-cloudflared tunnel --url http://localhost:1007 --no-autoupdate
+cloudflared tunnel run vocaloid         # 命名隧道，固定域名（见下）
+```
+
+**当前正式入口：`https://vocaloid.ciallo.ltd`**（命名隧道 `vocaloid`，域名固定，
+配置在 `~/.cloudflared/vocaloid.yml`，`ingress` 指向 `http://127.0.0.1:1007`）。
+命名隧道比 quick tunnel 可靠：域名不会每次重启就换，也就不需要反复去第三方平台
+（如聚合登录）重新加白名单。
+
+应急可用 quick tunnel（免登录，但**域名每次重建都会变**）：
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:1007 --no-autoupdate
 ```
 
 原因：dev server 会把**整个仓库**当静态根，`/@fs/<绝对路径>` 能原样读到仓库里的任何文件
@@ -137,8 +148,19 @@ cloudflared tunnel --url http://localhost:1007 --no-autoupdate
 同样几条路径全部返回 `index.html` 的 SPA 回退，泄露面关闭。
 
 隧道域名要加进 vite 的 Host 白名单（否则 403），`apps/web/vite.config.js` 里
-`server.allowedHosts` 与 `preview.allowedHosts` 都已设为 `[".trycloudflare.com"]`。
+`server.allowedHosts` 与 `preview.allowedHosts` 都已设为 `[".ciallo.ltd", ".trycloudflare.com"]`。
 前端请求全走相对路径 `/api/*`，所以**隧道只需暴露 1007 一个端口**。
+
+第三方登录（聚合登录）的回调地址是**按访客实际访问的域名动态推导**的，不是写死的本机地址 ——
+所以换隧道域名不用改 `.env`。但推导出来的来源必须过白名单（否则就是开放重定向），
+白名单在 `apps/api/.env` 的 `PUBLIC_ORIGINS`（逗号分隔，`.` 开头表示后缀匹配）：
+
+```
+PUBLIC_ORIGINS=.ciallo.ltd,.trycloudflare.com
+```
+
+> ⚠️ 聚合登录平台侧的**回调域名白名单**是精确主机名匹配、不支持通配，
+> 换域名后要去平台后台补一条（本项目实测：`vocaloid.ciallo.ltd` 必须单独加）。
 
 开了隧道就等于把 API 1003 一起放到公网，所以**只给本机用的端点必须锁掉**。下面三个前端
 一个都没用（只服务本机进度页 1006），已按「本机直连」限制（判据：环回地址 + 不带 Cloudflare
@@ -167,7 +189,8 @@ cp .env.example .env     # 然后照模板里的注释把值填进去
 | `PORT` | 否 | 后端端口，默认 `1003` |
 | `BILIBILI_COOKIE` | 建议填 | B 站登录态 cookie 串（`name=value; ...`）。浏览器登录后从开发者工具 → Application → Cookies 复制，至少含 `SESSDATA` / `bili_jct` / `DedeUserID`；用于空间信息等需登录接口，缺失时启动日志会出现 `[BiliApi -101] 账号未登录` |
 | `SESSDATA` | 否 | 遗留项：`config.js` 会读取，当前无实际使用 |
-| `FRONTEND_URL` | 否 | 前端地址，OAuth 回调成功后跳转目标，默认 `http://localhost:1005` |
+| `FRONTEND_URL` | 否 | 前端地址，默认 `http://localhost:1005`。**只是兜底**：公网访问时 OAuth 回调成功后的跳转目标按访客来源现算（相对路径 `/auth/success`），只有来源不可判定时才用它 |
+| `PUBLIC_ORIGINS` | 挂隧道时必填 | 允许作为 OAuth 回调来源的域名，逗号分隔，`.` 开头表示后缀匹配（如 `.ciallo.ltd`）。留空只放行环回与上面两个 URL 的 host |
 | `SESSION_SECRET` | 生产必填 | 会话签名密钥；留空会退化成代码里不安全的开发默认值 |
 | `AI_REVIEW_ENABLED` / `AI_REVIEW_BASE` / `AI_REVIEW_KEY` / `AI_REVIEW_MODEL` | 否 | AI 审核服务（OpenAI 兼容接口）；不填 = 跳过审核、不拦截收录 |
 | `CCCYUN_*` / `OAUTH_TYPES` | 否 | 彩虹聚合登录（QQ / 微信），需到 cccyun 平台申请 appid / appkey（模板里的 `CCCYUN_APPKEY` 是上游示例值，必须替换） |
