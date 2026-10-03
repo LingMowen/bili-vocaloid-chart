@@ -765,7 +765,10 @@ app.get("/api/board/singers", (req, res, next) => {
   const period = ["daily", "weekly", "monthly", "annual"].includes(req.query.period) ? req.query.period : "daily";
   const issue = req.query.issue != null && String(req.query.issue).trim() !== "" ? Number(req.query.issue) : null;
   let limit = Number(req.query.limit) || 10;
-  if (limit < 1 || limit > 30) limit = 10;
+  // limit=all / -1 / 0 → 不限量（/singers 页要展示本期全部）。
+  // 其余仍夹在 1..30，避免旧调用方一次拉爆。
+  if (String(req.query.limit || "").trim() === "all" || limit < 0) limit = 0;
+  else if (limit < 1 || limit > 30) limit = 10;
   // type: singer（歌姬，默认） / producer（P主，即投稿 UP 主）
   const type = String(req.query.type || "singer").toLowerCase() === "producer" ? "producer" : "singer";
   wrap(req, res, next, async () => {
