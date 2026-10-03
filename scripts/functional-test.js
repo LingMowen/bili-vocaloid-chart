@@ -34,9 +34,12 @@ const log = (s = "") => process.stdout.write(s + "\n");
 
 // ────────────────────────────────────────── HTTP
 
-function request(url, { timeout = TIMEOUT, method = "GET", body = null } = {}) {
+function request(url, { timeout = TIMEOUT, method = "GET", body = null, headers = null } = {}) {
   return new Promise((resolve) => {
-    const req = http.request(url, { timeout, method }, (res) => {
+    const opts = { timeout, method };
+    // 只有测试「本机直连守卫」时才需要自定义头（伪造 Host / Cloudflare 边缘头）。
+    if (headers) opts.headers = headers;
+    const req = http.request(url, opts, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => {
@@ -68,6 +71,7 @@ const enc = encodeURIComponent;
 // ────────────────────────────────────────── 测试框架（极简）
 
 const results = [];
+const skipped = [];
 let currentGroup = "";
 
 function group(name) {
@@ -79,12 +83,21 @@ function group(name) {
  * @param {string} label   人读的用例名
  * @param {number} expect  期望 HTTP 状态码
  * @param {string} path    请求路径
- * @param {object} opts    { tier, check(r), note }
+ * @param {object} opts    { tier, check, note, method, body, headers, allowUpstream }
  */
 async function api(label, expect, path, opts = {}) {
-  const { tier = "local", check, note, method = "GET", body = null } = opts;
-  const res = await request(`${API}${path}`, { method, body });
+  const { tier = "local", check, note, method = "GET", body = null, headers = null, allowUpstream = false } = opts;
+  const res = await request(`${API}${path}`, { method, body, headers });
   const problems = [];
+
+  // allowUpstream：上游（vocabili）自己 5xx 时，本站如实透传 5xx —— 那不是本站的 bug。
+  // 这种用例按「跳过」记，不记通过（不能假装绿），也不记失败（不该为上游背锅）。
+  if (allowUpstream && !res.error && res.status >= 500) {
+    skipped.push({ group: currentGroup, label, tier, status: res.status });
+    log(`  ${C.yellow("⊘")} ${label}${C.dim(`  [${tier}]`)}`);
+    log(`      ${C.yellow(`跳过：上游返回 ${res.status}，本站如实透传`)}${note ? C.dim("  " + note) : ""}`);
+    return;
+  }
 
   if (res.error) {
     problems.push(`请求失败：${res.error}`);
@@ -226,10 +239,13 @@ async function testLocal() {
         log(C.yellow(`  ⚠ 歌手「${singer}」没有 vocabili_id，跳过歌手用例`));
       } else {
         log(C.dim(`  歌手「${singer}」 vocabili_id=${vid}`));
+        // songs/top 与 songs/latest 是纯透传 vocabili 的 `/vocalist/:id/stats/{top,latest}-songs`。
+        // 上游对这些 id 自己就 500（实测 2026-10-03：id 79~100、110~200 全 500，
+        // 而 1~80、101~105、300 是 200；与本站无关），所以这两条允许跳过。
         await api("歌手详情", 200, `/api/vocalist/${vid}`, { tier: "online" });
         await api("歌手统计摘要", 200, `/api/vocalist/${vid}/stats/summary`, { tier: "online" });
-        await api("歌手热门歌", 200, `/api/vocalist/${vid}/songs/top`, { tier: "online" });
-        await api("歌手最新歌", 200, `/api/vocalist/${vid}/songs/latest`, { tier: "online" });
+        await api("歌手热门歌", 200, `/api/vocalist/${vid}/songs/top`, { tier: "online", allowUpstream: true });
+        await api("歌手最新歌", 200, `/api/vocalist/${vid}/songs/latest`, { tier: "online", allowUpstream: true });
         await api("歌手合成引擎", 200, `/api/vocalist/${vid}/synthesizers`, { tier: "online" });
         await api("歌手制作人", 200, `/api/vocalist/${vid}/producers`, { tier: "online" });
         await api("歌手 songs kind 非法 → 400", 400, `/api/vocalist/${vid}/songs/all`, { tier: "online" });
@@ -241,6 +257,17 @@ async function testLocal() {
 
   group("E. 采集进度");
   await api("进度历史", 200, "/api/progress/history");
+  // 进度页那三个端点只允许「本机直连」（隧道会把 API 一起暴露到公网）。
+  // 只查 remoteAddress 挡不住 —— cloudflared 在本机，转发来的也是 127.0.0.1。
+  // 所以判据还看 Cloudflare 边缘头与 Host。下面两条证明守卫真的在生效。
+  await api("进度历史 伪造 cf-ray → 403", 403, "/api/progress/history", {
+    headers: { Host: "localhost:1003", "cf-ray": "fake" },
+    note: "隧道请求必带 cf-ray",
+  });
+  await api("进度历史 非本机 Host → 403", 403, "/api/progress/history", {
+    headers: { Host: "evil.example.com" },
+    note: "隧道请求的 Host 是隧道域名",
+  });
 
   group("F. 鉴权边界（未带 token 时该拒的必须拒）");
   await api("我的评论 未登录 → 401", 401, "/api/me/comments");
@@ -459,6 +486,10 @@ function summary() {
   }
 
   const fails = results.filter((r) => !r.ok);
+  if (skipped.length) {
+    log(`\n${C.bold("跳过明细")}${C.dim("（上游 5xx，本站如实透传，不算本站失败）")}`);
+    for (const s of skipped) log(`  ${C.yellow("⊘")} [${s.tier}] ${s.label}  ${C.dim("上游 " + s.status)}`);
+  }
   if (fails.length) {
     log(`\n${C.bold("失败明细")}`);
     for (const f of fails) {
@@ -466,7 +497,7 @@ function summary() {
       for (const pr of f.problems) log(`      ${pr}`);
     }
   }
-  log(`\n${fails.length ? C.red(`✗ ${fails.length} 项失败`) : C.green("✓ 全部通过")}`);
+  log(`\n${fails.length ? C.red(`✗ ${fails.length} 项失败`) : C.green("✓ 全部通过")}${skipped.length ? C.yellow(`（${skipped.length} 项因上游 5xx 跳过）`) : ""}`);
   return fails.length === 0;
 }
 
