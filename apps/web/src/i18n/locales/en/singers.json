@@ -1,6 +1,7 @@
 {
   "title": "Vocalists",
   "desc": "Vocalists identified from this issue's chart, {{n}} total",
+  "descIssue": "Issue {{issue}} ({{date}}), {{n}} total",
   "tabView": "Views",
   "tabFavorite": "Favorites",
   "tabCount": "Songs",
@@ -15,5 +16,9 @@
   "tabEngine": "Engines",
   "tabUploader": "Uploaders",
   "tabPending": "Data not yet collected",
-  "noPicture": "No avatar"
+  "noPicture": "No avatar",
+  "ordScore": "Score",
+  "ordView": "Views",
+  "ordFavorite": "Favorites",
+  "ordCount": "Songs"
 }
