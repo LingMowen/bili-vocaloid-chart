@@ -18,6 +18,12 @@
  *   .git/config、apps/api/cache/library.json 等任意文件。所以 dev server 只能
  *   本机自己用；要对公网开隧道，必须用 --preview（只服务 dist/，且不暴露 /@fs/）。
  *
+ * ⚠ 脱离 DSH 进程树（重要）：
+ *   DSH 用 Windows Job 对象管着它启动的子进程，DSH 一退出 Job 关闭，里面的进程全被带走。
+ *   所以这里的服务不是直接 spawn 的，而是经 WMI（Win32_Process.Create）交给
+ *   WmiPrvSE.exe 代建 —— 父链在 services.exe 下，实测 InJob=False，关掉 DSH 也不会死。
+ *   WMI 失败时自动退回普通 spawn（会留在 DSH 树里，但至少服务能起来）。
+ *
  * 运行时文件都落在 <repo>/.tmp/run/（已被 .gitignore 忽略），不污染仓库根目录。
  * 日志：.tmp/run/api.out.log、api.err.log、web.out.log、web.err.log、preview.*.log
  */
@@ -92,9 +98,23 @@ function pidFile(name) {
   return path.join(RUN, `${name}.pid`);
 }
 
+/** WMI 包装进程（cmd.exe）的 pid 单独存一份，stop 时要一并收掉。 */
+function wrapPidFile(name) {
+  return path.join(RUN, `${name}.wrap.pid`);
+}
+
 function readPid(name) {
   try {
     const raw = fs.readFileSync(pidFile(name), "utf8").trim();
+    return Number(raw) || null;
+  } catch {
+    return null;
+  }
+}
+
+function readWrapPid(name) {
+  try {
+    const raw = fs.readFileSync(wrapPidFile(name), "utf8").trim();
     return Number(raw) || null;
   } catch {
     return null;
@@ -168,15 +188,122 @@ function probe(url, timeoutMs = 1500) {
   });
 }
 
+// ────────────────────────────────────────────── 脱离 DSH 进程树启动
+
+/**
+ * 为什么要绕这一圈：DSH 用 Job 对象管着它启动的所有子进程，DSH 一退出 Job 就关闭，
+ * 里面的进程全被带走 —— 表现就是「用户不小心关掉 DSH，本地服务跟着一起没了」。
+ *
+ * 实测（IsProcessInJob）：dev.js 自己、以及它直接 spawn 出来的服务，InJob 全是 True；
+ * 而经 WMI `Win32_Process.Create` 创建的进程 InJob=False。原因是 WMI 让
+ * WmiPrvSE.exe（services.exe 的子进程）代它创建，父链压根不在 DSH 树里。
+ *
+ * 两个必须遵守的约束：
+ *   1. CommandLine 只用 ASCII。中文路径改由 WMI 的 CurrentDirectory 属性传
+ *      （那是属性不是命令行，不吃控制台代码页），命令行里一律用相对路径。
+ *      实测经命令行传中文，在部分调用链上会被 GBK 吃掉，变成乱码目录。
+ *   2. PowerShell 脚本用 -EncodedCommand（base64/UTF-16LE）传入，
+ *      让中文的 CurrentDirectory 全程不经过代码页转换。
+ */
+function psEncoded(script) {
+  return Buffer.from(script, "utf16le").toString("base64");
+}
+
+/** 把绝对路径换成相对 svc.cwd 的路径（保证 CommandLine 里没有中文）。 */
+function asciiRel(cwd, p) {
+  return path.isAbsolute(p) ? path.relative(cwd, p) : p;
+}
+
+function psQuote(s) {
+  return String(s).replace(/'/g, "''");
+}
+
+/** 经 WMI 创建进程，返回 WmiPrvSE 代建出来的那个 cmd 包装进程的 pid。 */
+function launchViaWmi(svc) {
+  const outLog = asciiRel(svc.cwd, path.join(RUN, `${svc.name}.out.log`));
+  const errLog = asciiRel(svc.cwd, path.join(RUN, `${svc.name}.err.log`));
+  const args = svc.args.map((a) => asciiRel(svc.cwd, a));
+  const resultFile = path.join(RUN, `${svc.name}.wmi.txt`);
+
+  const cli =
+    `cmd.exe /c ""${svc.cmd}" ` +
+    args.map((a) => `"${a}"`).join(" ") +
+    ` >> "${outLog}" 2>> "${errLog}""`;
+
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{",
+    `  CommandLine = '${psQuote(cli)}'`,
+    `  CurrentDirectory = '${psQuote(svc.cwd)}'`,
+    "}",
+    `Set-Content -LiteralPath '${psQuote(resultFile)}' -Value ("WMIOK " + $r.ProcessId + " " + $r.ReturnValue) -Encoding ASCII`,
+  ].join("\n");
+
+  try {
+    fs.unlinkSync(resultFile);
+  } catch {
+    /* 本来就不在 */
+  }
+
+  // ⚠ 两个坑，都实测过，别"顺手优化"回去：
+  //
+  // 1. 不要加 -ExecutionPolicy Bypass。
+  //    实测：带 Bypass 时 powershell.exe 会在 4 次里卡死 3 次（ETIMEDOUT 12s/23s/12s，
+  //    只有 1 次 OK）；去掉后 4/4 全 OK，约 700ms。Bypass 会触发执行策略重解析，
+  //    在本机策略链（含 ConstrainedLanguage/AppLocker 之类）上偶发挂住。
+  //    -EncodedCommand 本身不经过 .ps1 文件，本来就不吃执行策略，加了纯属有害。
+  //
+  // 2. stdio 必须是 "ignore"，不能用管道。
+  //    WMI 建出来的 cmd.exe 会继承 PowerShell 的标准句柄，管道写端一直不关，
+  //    父进程读 stdout 永远等不到 EOF，spawnSync 直接卡到超时（实测 20s ETIMEDOUT）。
+  //    所以结果走文件回传，不走 stdout。
+  execFileSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-EncodedCommand", psEncoded(script)],
+    { stdio: "ignore", windowsHide: true, timeout: 30_000 }
+  );
+
+  let raw = "";
+  try {
+    raw = fs.readFileSync(resultFile, "utf8");
+  } catch {
+    throw new Error("WMI 没有回传结果文件");
+  }
+  const m = raw.match(/WMIOK\s+(\d+)\s+(\d+)/);
+  if (!m) throw new Error(`WMI 结果无法解析：${raw.trim().slice(0, 80)}`);
+  if (Number(m[2]) !== 0) throw new Error(`Win32_Process.Create 返回 ${m[2]}`);
+  try {
+    fs.unlinkSync(resultFile);
+  } catch {
+    /* 无所谓 */
+  }
+  return Number(m[1]);
+}
+
+/** 兜底：老的直接 spawn。会留在 DSH 的 Job 里，但总比起不来强。 */
+function launchPlain(svc) {
+  const outFd = fs.openSync(path.join(RUN, `${svc.name}.out.log`), "a");
+  const errFd = fs.openSync(path.join(RUN, `${svc.name}.err.log`), "a");
+  const child = spawn(svc.cmd, svc.args, {
+    cwd: svc.cwd,
+    stdio: ["ignore", outFd, errFd],
+    detached: true,
+    windowsHide: true,
+  });
+  child.unref();
+  return child.pid;
+}
+
 // ────────────────────────────────────────────────────────── 动作
 
 async function stop() {
   log(C.bold("停止服务"));
   for (const svc of ALL_SERVICES) {
-    // 两路取 pid：pid 文件里的，和端口实际占着的。取并集，才能清掉僵尸。
+    // 三路取 pid：pid 文件里的、WMI 包装进程的、端口实际占着的。取并集，才能清掉僵尸。
     const fromFile = readPid(svc.name);
+    const fromWrap = readWrapPid(svc.name);
     const fromPort = pidsOnPorts(svc.ports);
-    const targets = [...new Set([fromFile, ...fromPort].filter(Boolean))];
+    const targets = [...new Set([fromFile, fromWrap, ...fromPort].filter(Boolean))];
 
     if (targets.length === 0) {
       log(`  ${svc.label} ${C.dim("未在运行")}`);
@@ -196,6 +323,11 @@ async function stop() {
       fs.unlinkSync(pidFile(svc.name));
     } catch {
       /* 文件本来就不在，无所谓 */
+    }
+    try {
+      fs.unlinkSync(wrapPidFile(svc.name));
+    } catch {
+      /* 同上 */
     }
   }
   log();
@@ -221,6 +353,7 @@ async function start(mode = "dev") {
       for (const pid of onPorts) killTree(pid);
       for (let i = 0; i < 20 && pidsOnPorts(s.ports).length > 0; i++) await sleep(150);
       try { fs.unlinkSync(pidFile(s.name)); } catch { /* 无所谓 */ }
+      try { fs.unlinkSync(wrapPidFile(s.name)); } catch { /* 无所谓 */ }
     }
   }
 
@@ -236,29 +369,30 @@ async function start(mode = "dev") {
       continue;
     }
 
-    const outFd = fs.openSync(path.join(RUN, `${svc.name}.out.log`), "a");
-    const errFd = fs.openSync(path.join(RUN, `${svc.name}.err.log`), "a");
-
     // 这里刻意不用 `node --watch`。
     // 原因不是嫌它烦，是它会同时把两件事变成假的：
     //   1. --watch 会 fork 一个子进程跑真正的服务，于是「pid 文件里的 pid」和
     //      「占着端口的 pid」永远不同，drift 检查从此一直误报——误报多了，人就不看警告了。
     //   2. 杀掉子进程后 --watch 父进程会把它重新拉起来，于是 stop 之后端口又回来了。
     // 改代码就跑一次 `node scripts/dev.js restart`，比一个会骗人的自动重启可靠。
-    const child = spawn(svc.cmd, svc.args, {
-      cwd: svc.cwd,
-      stdio: ["ignore", outFd, errFd],
-      detached: true,
-      windowsHide: true,
-    });
-    child.unref();
-    fs.writeFileSync(pidFile(svc.name), String(child.pid), "utf8");
+    let wrapperPid = null;
+    let viaWmi = true;
+    try {
+      wrapperPid = launchViaWmi(svc);
+    } catch (e) {
+      viaWmi = false;
+      log(`  ${svc.label} ${C.yellow("WMI 启动失败，退回普通 spawn")} ${C.dim(String(e.message).slice(0, 80))}`);
+      wrapperPid = launchPlain(svc);
+    }
+    fs.writeFileSync(pidFile(svc.name), String(wrapperPid ?? ""), "utf8");
+    if (viaWmi && wrapperPid) {
+      fs.writeFileSync(wrapPidFile(svc.name), String(wrapperPid), "utf8");
+    }
 
     // 等它真的能用——「进程起了」不等于「服务好了」
     const deadline = Date.now() + 45_000;
     let ok = false;
     while (Date.now() < deadline) {
-      if (child.exitCode !== null) break; // 起挂了，别干等
       if (await probe(svc.health)) {
         ok = true;
         break;
@@ -267,11 +401,21 @@ async function start(mode = "dev") {
     }
 
     if (ok) {
-      log(`  ${svc.label} ${C.green("已启动")} pid ${child.pid}  端口 ${svc.ports.join(" / ")}`);
+      // 经 WMI 时 wrapperPid 是 cmd 包装进程；真正监听端口的是它的子进程。
+      // pid 文件写「真正占端口的那个」，status 的 drift 检查才不会误报。
+      const real = pidsOnPorts(svc.ports);
+      const showPid = real.length > 0 ? real.join(",") : wrapperPid;
+      if (real.length > 0) fs.writeFileSync(pidFile(svc.name), String(real[0]), "utf8");
+      log(`  ${svc.label} ${C.green("已启动")} pid ${showPid}  端口 ${svc.ports.join(" / ")}`);
+      log(
+        `  ${" ".repeat(9)}${C.dim(
+          viaWmi ? "已脱离 DSH 进程树（关掉 DSH 也不会被带走）" : "仍在 DSH 进程树内（DSH 退出会带走）"
+        )}`
+      );
       log(`  ${" ".repeat(9)}${C.dim(svc.health)}`);
     } else {
       anyFail = true;
-      log(`  ${svc.label} ${C.red("45 秒内没就绪")} pid ${child.pid ?? "?"}`);
+      log(`  ${svc.label} ${C.red("45 秒内没就绪")} pid ${wrapperPid ?? "?"}`);
       const tail = fs
         .readFileSync(path.join(RUN, `${svc.name}.err.log`), "utf8")
         .split(/\r?\n/)

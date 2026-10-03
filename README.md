@@ -139,6 +139,15 @@ cloudflared tunnel --url http://localhost:1007 --no-autoupdate
 隧道域名要加进 vite 的 Host 白名单（否则 403），`apps/web/vite.config.js` 里
 `server.allowedHosts` 与 `preview.allowedHosts` 都已设为 `[".trycloudflare.com"]`。
 前端请求全走相对路径 `/api/*`，所以**隧道只需暴露 1007 一个端口**。
+
+开了隧道就等于把 API 1003 一起放到公网，所以**只给本机用的端点必须锁掉**。下面三个前端
+一个都没用（只服务本机进度页 1006），已按「本机直连」限制（判据：环回地址 + 不带 Cloudflare
+边缘头 + Host 是 localhost）：
+
+- `POST /api/collect/trigger` —— 原本**完全无鉴权**，能触发全量采集、消耗 AI 审核额度
+- `GET /api/progress/stream` —— SSE 长连接
+- `GET /api/progress/history` —— 采集历史与审核状态
+
 细节见 [`docs/对接文档.md` §0.7](docs/对接文档.md)。
 
 ## 环境变量
