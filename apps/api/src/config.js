@@ -36,14 +36,57 @@ module.exports = {
     .filter(Boolean),
   sessionSecret:
     process.env.SESSION_SECRET || "bili-vocaloid-chart-dev-secret-change-me",
-  cccyun: {
-    apiUrl: process.env.CCCYUN_API_URL || "https://u.cccyun.cc/",
-    appId: process.env.CCCYUN_APPID || "1000",
-    appKey: process.env.CCCYUN_APPKEY || "1111111111111111111111111111",
-    callbackUrl:
-      process.env.CCCYUN_CALLBACK || "http://localhost:1003/api/auth/oauth/callback",
-    types: (process.env.OAUTH_TYPES || "qq,wx").split(",").map((s) => s.trim()).filter(Boolean),
-  },
+  // 第三方登录可以同时挂多套聚合登录服务商（协议相同，都是 connect.php?act=login
+  // + return.php），按渠道分流：某套没给某渠道配密钥时，那个渠道走另一套。
+  // 为什么需要它：mapay 应用只开通了 qq/wx/alipay，cc云开通了全部 10 个，
+  // 单一服务商无法覆盖全部渠道。
+  // 约定：OAUTH_PROVIDERS 里靠前的优先；某渠道在所有 provider 里都没声明就不可用。
+  // 两套的回调域名白名单都要各自放行实际访问的域名，否则 connect.php 会返回
+  // errcode 103「回调域名未授权」。
+  oauthProviders: [
+    {
+      name: "mapay",
+      apiUrl: process.env.MAPAY_API_URL || "https://login.mapay.cn/",
+      appId: process.env.MAPAY_APPID || "0",
+      appKey: process.env.MAPAY_APPKEY || "",
+      callbackUrl: process.env.MAPAY_CALLBACK || "",
+      types: (process.env.MAPAY_TYPES || "qq,wx,alipay")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    },
+    {
+      name: "cccyun",
+      apiUrl: process.env.CCCYUN_API_URL || "https://u.cccyun.cc/",
+      appId: process.env.CCCYUN_APPID || "1000",
+      appKey: process.env.CCCYUN_APPKEY || "1111111111111111111111111111",
+      callbackUrl:
+        process.env.CCCYUN_CALLBACK || "http://localhost:1003/api/auth/oauth/callback",
+      types: (process.env.CCCYUN_TYPES || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    },
+  ],
+  // 对外暴露的渠道 = 各 provider 声明渠道的并集（按 provider 顺序去重）
+  oauthTypes: (() => {
+    const seen = new Set();
+    for (const p of [
+      ...(process.env.MAPAY_TYPES || "qq,wx,alipay").split(","),
+      ...(process.env.CCCYUN_TYPES || "").split(","),
+    ]) {
+      const t = p.trim();
+      if (t) seen.add(t);
+    }
+    // 兼容旧配置：两套都没显式声明时退回原来的 OAUTH_TYPES
+    if (seen.size === 0) {
+      for (const t of (process.env.OAUTH_TYPES || "qq,wx").split(",")) {
+        const v = t.trim();
+        if (v) seen.add(v);
+      }
+    }
+    return [...seen];
+  })(),
   smtp: {
     enabled: bool(process.env.SMTP_ENABLED, false),
     host: process.env.SMTP_HOST || "",
