@@ -179,8 +179,9 @@ cp .env.example .env     # 然后照模板里的注释把值填进去
 - **增量口径**：增量 = 当前值 − **窗口起始日前一天**的快照值；窗口内新歌无基线，用当前累计值计分。
 - **评分公式**：`最终得点 = 播放得点 + 互动得点 + 收藏得点 + 硬币得点 + 点赞得点`，
   含修正 A（无上限）/ B（≤50）/ C（≤50）/ D（≤1），实现见 `apps/api/src/score.js` → `chartScore()`。
-- **永久成就**：SUPERHIT（累计 2 次主榜前 3）、门番（28 期 20 次或 50 期 30 次，无连续 8 期未上榜）、
-  神话（播放破千万）、年榜首位。
+- **永久成就**：对齐 vocabili 的六类 —— Emerging Hit!（连续 3 期主榜前 5）、Mega Hit!!!（连续 5 期前 3）、
+  门番候补 / 门番（15 期内 10 期、30 期内 20 期前 20）、日刊门番候补 / 日刊门番。
+  周刊榜只产出前四类，日刊榜只产出后两类。
 
 详细的窗口与基线口径见 [`docs/对接文档.md`](docs/对接文档.md) 第四节。
 
@@ -201,7 +202,7 @@ cp .env.example .env     # 然后照模板里的注释把值填进去
 | `GET /api/owners`、`GET /api/owner/:mid` | UP主检索与详情 |
 | `GET /api/singers`、`GET /api/vocalist/:id` | 歌手列表与详情 |
 | `GET /api/tags`、`GET /api/stats`、`GET /api/girls` | 标签 / 统计 / 歌姬聚合 |
-| `GET /api/achievements` | 成就列表（按周期 + 类别筛选） |
+| `GET /api/achievements` | 成就列表（`board=daily\|weekly\|monthly\|annual\|all` + `type=<类别>\|all` 筛选；`board=all` 跨榜按达成日期倒序，首页「成就速递」用） |
 | `GET /api/today`、`GET /api/random` | 历史上的今天 / 随机跳转 |
 | `GET /api/progress/stream`、`GET /api/progress/history` | 采集进度（SSE / 历史） |
 | `POST /api/collect/trigger` | 手动触发采集 |
@@ -227,5 +228,5 @@ web (Vite) --/api--> Express
   全模型故障时采取 fail-closed（拒绝收录），故障结果不再写入缓存以便重试。
   历史缓存中仍存有早期宽松版本留下的、未真正判定的条目。
 - **每日快照存在断档**（如缺 08-20、08-21、08-29、09-07～09-11、09-18、09-19），
-  断档期在历史回溯时被跳过，会使门番 / SUPERHIT 的可判定期数少于理论值。
-- 项目根目录当前**不是 git 仓库**，`.gitignore` 尚未生效。
+  断档期在历史回溯时被跳过，会使门番系成就的可判定期数少于理论值。
+- 项目根目录当前**不是 git 仓库**，`.gitignore` 尚未生效。（此条已过时：仓库已初始化并推送至 GitHub，见 `docs/对接文档.md` §0.7）

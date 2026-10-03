@@ -127,8 +127,9 @@ const ACH_COLORS = {
   daily_regular: "#127436",
   daily_potential_regular: "#23AFA4",
 };
-const ACH_ORDER = ["emerging_hit", "mega_hit", "potential_regular", "regular"];
 
+// 首页成就速递：跨榜混排（board=all），一次取回全部类别后按达成日期倒序取前 10 条。
+// 对齐 vocabili —— 它调 /achievement 不传 board/type，本地 sort 后 slice(0,10)。
 function useAchievements(board, type, pageSize = 6) {
   const q = useQuery({
     queryKey: qk.achievements({ board, type, page_size: pageSize }),
@@ -137,16 +138,24 @@ function useAchievements(board, type, pageSize = 6) {
   return [q.data, q.error?.message, q.isLoading];
 }
 
-// 首页「成就」卡片：展示 vocabili 四类永久成就
-// （Emerging Hit! / Mega Hit!!! / 门番候补 / 门番）
-function AchieveCard({ board }) {
+// 制作人 / 歌手行：各自用「、」连接，两段用「 | 」连接（vocabili 的 OO()）。
+// 歌手过滤掉 is_support（应援/合唱位不计入）。
+function artistLine(song) {
+  const producers = (song?.producers || []).map((p) => p?.producer?.name).filter(Boolean).join("、");
+  const vocalists = (song?.vocalists || [])
+    .filter((v) => v?.is_support !== true)
+    .map((v) => v?.vocalist?.name)
+    .filter(Boolean)
+    .join("、");
+  return [producers, vocalists].filter(Boolean).join(" | ");
+}
+
+// 首页「成就速递」卡片：跨榜混排最近达成的永久成就（Emerging Hit! / Mega Hit!!! / 门番候补 / 门番 / 日刊门番…）
+function AchieveCard() {
   const { t } = useTranslation();
-  const [type, setType] = useState("emerging_hit");
-  const [data, err, loading] = useAchievements(board, type, 6);
+  const [data, err, loading] = useAchievements("all", "all", 10);
   const items = data?.data ?? [];
-  const issue = data?.issue;
-  const catLabel = t(`achievements.cat.${type}.label`);
-  const catDesc = t(`achievements.cat.${type}.desc`);
+  if (!loading && !err && items.length === 0) return null;
   return (
     <section className="flex h-full flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="flex items-center justify-between border-b px-3 py-3 xs:px-4">
@@ -164,77 +173,56 @@ function AchieveCard({ board }) {
           </svg>
         </Link>
       </div>
-      <div className="flex gap-1 overflow-x-auto border-b p-1.5 scrollbar-none">
-        {ACH_ORDER.map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setType(k)}
-            className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
-              type === k ? "text-white" : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-            style={type === k ? { backgroundColor: ACH_COLORS[k] } : undefined}
-          >
-            {t(`achievements.cat.${k}.label`)}
-          </button>
-        ))}
-      </div>
       <div className="flex-1 p-1.5 xs:p-2">
         {loading ? (
-          <MiniSkeleton rows={6} />
+          <div className="space-y-1">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
+            ))}
+          </div>
         ) : err ? (
           <p className="p-3 text-xs text-destructive">{err}</p>
-        ) : items.length === 0 ? (
-          <p className="py-8 text-center text-xs text-muted-foreground">{t("achievements.emptyWeekly")}</p>
         ) : (
-          <>
-            <p className="mb-1.5 px-1.5 text-[11px] leading-snug text-muted-foreground">
-              <span className="font-semibold" style={{ color: ACH_COLORS[type] }}>{catLabel}</span>
-              <span className="mx-1">·</span>
-              {catDesc}
-              {issue != null && <span className="ml-1 text-muted-foreground/70">（#{issue}）</span>}
-            </p>
-            <ul className="space-y-0.5">
-              {items.map((it) => {
-                const rank = it.progress ? Number(it.progress) : 0;
-                return (
-                  <li key={it.song_id}>
-                    <Link
-                      to={`/video/${it.song_id}`}
-                      className="grid min-h-16 grid-cols-[6.875rem_minmax(0,1fr)_auto] items-center gap-2 overflow-visible rounded-lg p-1.5 transition-colors hover:bg-primary/5 xs:grid-cols-[7.75rem_minmax(0,1fr)_auto] sm:gap-3"
-                    >
-                      <div className="relative aspect-video w-full shrink-0 overflow-visible">
-                        <div className="absolute inset-0 overflow-hidden rounded-md bg-muted">
-                          <img src={it.song?.thumbnail || it.song?.pic || it.song?.cover} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-                        </div>
-                        <span
-                          className="absolute -left-1 -top-1 z-10 flex h-6 min-w-6 items-center justify-center whitespace-nowrap rounded-md px-2 text-[10px] font-black shadow ring-2 ring-background"
-                          style={{ backgroundColor: ACH_COLORS[type], color: "#fff" }}
-                        >
-                          {rank ? `#${rank}` : t(`achievements.cat.${type}.label`)}
-                        </span>
+          <ul className="space-y-0.5">
+            {items.map((it) => {
+              const label = t(`achievements.cat.${it.category}.label`);
+              return (
+                <li key={`${it.category}-${it.song_id}`}>
+                  <Link
+                    to={`/video/${it.song_id}`}
+                    className="grid min-h-16 grid-cols-[6.875rem_minmax(0,1fr)_auto] items-center gap-2 overflow-visible rounded-lg p-1.5 transition-colors hover:bg-primary/5 xs:grid-cols-[7.75rem_minmax(0,1fr)_auto] sm:gap-3"
+                  >
+                    <div className="relative aspect-video w-full shrink-0 overflow-visible">
+                      <div className="absolute inset-0 overflow-hidden rounded-md bg-muted">
+                        <img src={it.song?.thumbnail || it.song?.pic || it.song?.cover} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
                       </div>
-                      <div className="min-w-0">
-                        <span className="block max-w-full overflow-hidden text-[13px] font-medium leading-tight">
-                          <span className="inline-block whitespace-nowrap">{it.song?.display_name || it.song?.title}</span>
-                        </span>
-                        <span className="mt-0.5 block max-w-full overflow-hidden text-[11px] leading-tight text-muted-foreground/70">
-                          <span className="inline-block whitespace-nowrap">
-                            {it.song?.producers?.[0]?.producer?.name}
-                            {it.song?.vocalists?.length > 0 ? ` · ${it.song.vocalists.map((v) => v.vocalist?.name).join("、")}` : ""}
-                          </span>
-                        </span>
+                      <span
+                        className="absolute -left-1 -top-1 z-10 flex h-6 min-w-6 items-center justify-center whitespace-nowrap rounded-md px-2 text-[10px] font-black leading-none shadow ring-2 ring-background"
+                        style={{ backgroundColor: ACH_COLORS[it.category] || "#6A0DAD", color: "#fff" }}
+                        title={label}
+                      >
+                        {label}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="block max-w-full overflow-hidden text-sm font-medium leading-tight">
+                        <span className="inline-block whitespace-nowrap">{it.song?.display_name || it.song?.title}</span>
+                      </span>
+                      <span className="mt-0.5 block max-w-full overflow-hidden text-xs text-muted-foreground">
+                        <span className="inline-block whitespace-nowrap">{artistLine(it.song)}</span>
+                      </span>
+                    </div>
+                    <div className="shrink-0 text-right tabular-nums">
+                      <div className="text-xs font-semibold text-foreground sm:text-sm">
+                        {it.achieved_issue != null ? `#${it.achieved_issue}` : "·"}
                       </div>
-                      <div className="shrink-0 text-right tabular-nums">
-                        <div className="text-xs font-semibold text-foreground">{rank ? `#${rank}` : "·"}</div>
-                        <div className="mt-0.5 text-[10px] text-muted-foreground">{t("home.achieved")}</div>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
+                      <div className="mt-0.5 text-[10px] text-muted-foreground">{t("home.achieved")}</div>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
     </section>
@@ -294,7 +282,7 @@ function WeeklySection() {
         </section>
       </div>
       <div className="min-w-0 lg:col-span-2">
-        <AchieveCard board={tab} />
+        <AchieveCard />
       </div>
     </div>
   );
