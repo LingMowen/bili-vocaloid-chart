@@ -1298,8 +1298,37 @@ function setProgressCors(req, res) {
   }
 }
 
+/**
+ * 进度页相关的三个端点（SSE 流、历史快照、手动触发采集）只允许「本机直连」。
+ *
+ * 为什么不能只查 IP：API 1003 现在经 Cloudflare 隧道对公网开放，而 cloudflared
+ * 就跑在本机，它转发过来的请求 remoteAddress 同样是 127.0.0.1 —— 只看 IP 挡不住公网。
+ * 判据三条同时成立才算本机：
+ *   1. remoteAddress 是环回；
+ *   2. 不带 Cloudflare 边缘头（cf-connecting-ip / cf-ray / cf-ipcountry）——
+ *      经隧道的请求一定有，本机进度页一定没有；
+ *   3. Host 是 localhost / 127.0.0.1 / [::1]（隧道请求的 Host 是隧道域名）。
+ *
+ * 前端（apps/web）不使用这三个端点（grep 零引用），所以收紧不影响公网页面。
+ * 手动触发采集原本完全无鉴权，是最该挡的一个：它能打 B 站接口、消耗 AI 审核额度、写缓存。
+ */
+function isLocalDirect(req) {
+  const ip = req.socket.remoteAddress || "";
+  if (!/^(127\.|::1|::ffff:127\.)/.test(ip)) return false;
+  if (req.headers["cf-connecting-ip"] || req.headers["cf-ray"] || req.headers["cf-ipcountry"]) {
+    return false;
+  }
+  const host = String(req.headers.host || "").toLowerCase().replace(/:\d+$/, "");
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+}
+
+function requireLocal(req, res, next) {
+  if (isLocalDirect(req)) return next();
+  return fail(res, 403, "forbidden (local only)");
+}
+
 // SSE：推送当前周期 + 历史周期（一次性快照）+ 实时事件流
-app.get("/api/progress/stream", (req, res) => {
+app.get("/api/progress/stream", requireLocal, (req, res) => {
   setProgressCors(req, res);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -1349,13 +1378,13 @@ app.get("/api/progress/stream", (req, res) => {
 });
 
 // 历史快照
-app.get("/api/progress/history", (req, res) => {
+app.get("/api/progress/history", requireLocal, (req, res) => {
   setProgressCors(req, res);
   res.json({ ok: true, data: { history: progress.listHistory(), cycles: progress.listCycles(), current: progress.getCurrentCycle(), review: progress.getReviewState() } });
 });
 
 // 手动触发采集
-app.post("/api/collect/trigger", express.json(), (req, res) => {
+app.post("/api/collect/trigger", requireLocal, express.json(), (req, res) => {
   setProgressCors(req, res);
   const force = !!(req.body && req.body.force);
   const cur = progress.getCurrentCycle();
