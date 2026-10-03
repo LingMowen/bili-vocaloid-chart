@@ -5,7 +5,22 @@ const nodemailer = require("nodemailer");
 const config = require("./config");
 const { stmts, findUser } = require("./db");
 
-const OAUTH_TYPES = config.cccyun.types || ["qq", "wx"];
+const OAUTH_TYPES = config.oauthTypes || ["qq", "wx"];
+// 渠道 → 服务商 的路由表：按 config.oauthProviders 顺序建，先声明的优先。
+// 两个 provider 都声明同一渠道时取靠前那个（mapay 优先，因为它是当前主用）。
+const PROVIDER_BY_TYPE = (() => {
+  const m = new Map();
+  for (const p of config.oauthProviders || []) {
+    for (const t of p.types || []) {
+      if (!m.has(t)) m.set(t, p);
+    }
+  }
+  return m;
+})();
+// 取某渠道的服务商；找不到就退回第一个 provider（保证旧单套配置仍能跑）
+function providerFor(type) {
+  return PROVIDER_BY_TYPE.get(type) || (config.oauthProviders || [])[0] || null;
+}
 const OAUTH_STATE_COOKIE = "oauth_state";
 const CODE_TTL_MS = 5 * 60 * 1000;
 const CODE_RESEND_MS = 60 * 1000;
@@ -46,16 +61,16 @@ function issueToken(uid) {
   return signToken({ uid, exp: Date.now() + 30 * 24 * 3600 * 1000 });
 }
 
-function makeState(type) {
+function makeState(type, provider) {
   const ts = String(Date.now());
   const sig = crypto
-    .createHmac("sha256", config.cccyun.appKey)
+    .createHmac("sha256", provider.appKey)
     .update(`${type}:${ts}`)
     .digest("hex");
   return `${ts}.${sig}`;
 }
 
-function verifyState(type, state) {
+function verifyState(type, state, provider) {
   const [ts, sig] = String(state || "").split(".");
   if (!ts || !sig) return false;
   // 先校验时间戳本身是数字：非数字会让 Date.now() - NaN 变成 NaN，
@@ -63,7 +78,7 @@ function verifyState(type, state) {
   if (!/^\d+$/.test(ts)) return false;
   if (Date.now() - Number(ts) > STATE_TTL_MS) return false;
   const expect = crypto
-    .createHmac("sha256", config.cccyun.appKey)
+    .createHmac("sha256", provider.appKey)
     .update(`${type}:${ts}`)
     .digest("hex");
   const a = Buffer.from(sig);
@@ -89,8 +104,8 @@ function parseCookies(header) {
   return out;
 }
 
-function cccyunGet(params) {
-  const url = `${config.cccyun.apiUrl}connect.php?${new URLSearchParams(params)}`;
+function cccyunGet(provider, params) {
+  const url = `${provider.apiUrl}connect.php?${new URLSearchParams(params)}`;
   return fetch(url, {
     headers: {
       "User-Agent":
@@ -99,17 +114,17 @@ function cccyunGet(params) {
     signal: AbortSignal.timeout(12000),
   })
     .then((r) => r.json())
-    .catch((e) => ({ code: -1, msg: `cccyun 请求失败: ${e.message}` }));
+    .catch((e) => ({ code: -1, msg: `${provider.name} 请求失败: ${e.message}` }));
 }
 
-function cccyunLogin(type, redirectUri) {
-  const state = makeState(type);
-  return cccyunGet({
+function cccyunLogin(provider, type, redirectUri) {
+  const state = makeState(type, provider);
+  return cccyunGet(provider, {
     act: "login",
-    appid: config.cccyun.appId,
-    appkey: config.cccyun.appKey,
+    appid: provider.appId,
+    appkey: provider.appKey,
     type,
-    redirect_uri: redirectUri || config.cccyun.callbackUrl,
+    redirect_uri: redirectUri || provider.callbackUrl,
     state,
   }).then((arr) => ({ arr, state }));
 }
@@ -120,8 +135,11 @@ function hostAllowed(hostname) {
   if (!h) return false;
   // 环回地址：本机开发，任意端口都放行
   if (h === "localhost" || h === "127.0.0.1" || h === "::1") return true;
-  // 已配置的前端地址 / 回调地址（取其 host，兼容各自换过端口的历史）
-  for (const cfgUrl of [config.frontendUrl, config.cccyun.callbackUrl]) {
+  // 已配置的前端地址 / 各 provider 的回调地址（取其 host，兼容各自换过端口的历史）
+  for (const cfgUrl of [
+    config.frontendUrl,
+    ...(config.oauthProviders || []).map((p) => p.callbackUrl),
+  ]) {
     try {
       if (new URL(cfgUrl).hostname.toLowerCase() === h) return true;
     } catch {
@@ -156,11 +174,11 @@ function requestOrigin(req) {
   return `${proto}://${host}`;
 }
 
-function cccyunCallback(type, code) {
-  return cccyunGet({
+function cccyunCallback(provider, type, code) {
+  return cccyunGet(provider, {
     act: "callback",
-    appid: config.cccyun.appId,
-    appkey: config.cccyun.appKey,
+    appid: provider.appId,
+    appkey: provider.appKey,
     type,
     code,
   });
@@ -217,20 +235,25 @@ function makeRouter() {
       if (!OAUTH_TYPES.includes(type)) {
         return res.status(400).json({ ok: false, message: "不支持的登录方式" });
       }
+      // 先按渠道选出服务商：不同渠道可能挂在不同聚合登录平台上
+      const provider = providerFor(type);
+      if (!provider) {
+        return res.status(400).json({ ok: false, message: "不支持的登录方式" });
+      }
       // 回调地址按「访客实际访问的来源」拼，而不是用 .env 里写死的本机地址：
       // 公网访客拿到的 redirect_uri 必须指回公网域名，否则浏览器会被送回
-      // 他自己的 127.0.0.1。来源不在白名单内时退回配置值（本地开发照旧可用）。
+      // 他自己的 127.0.0.1。来源不在白名单内时退回该 provider 的配置值。
       const origin = requestOrigin(req);
       const redirectUri = origin
         ? `${origin}/api/auth/oauth/callback`
-        : config.cccyun.callbackUrl;
-      const { arr, state } = await cccyunLogin(type, redirectUri);
+        : provider.callbackUrl;
+      const { arr, state } = await cccyunLogin(provider, type, redirectUri);
       if (!arr || arr.code !== 0 || !arr.url) {
         return res.status(502).json({ ok: false, message: (arr && arr.msg) || "获取授权地址失败" });
       }
       // state 改用 cookie 携带，不再拼到 URL 上：
-      // cc云返回的 url 里已带它自己的 state（用于 return.php 找回回调地址），
-      // 若再追加同名参数会出现两个 state，回调端取到的是 cc云的，我们自己的签名校验必然失败。
+      // 聚合平台返回的 url 里已带它自己的 state（用于 return.php 找回回调地址），
+      // 若再追加同名参数会出现两个 state，回调端取到的是平台的，我们自己的签名校验必然失败。
       res.setHeader(
         "Set-Cookie",
         `${OAUTH_STATE_COOKIE}=${encodeURIComponent(`${type}:${state}`)}; Path=/; Max-Age=600; SameSite=Lax`,
@@ -251,18 +274,23 @@ function makeRouter() {
     try {
       const type = String(req.query.type || "");
       const { code, state } = req.query;
+      // 回调必须走与登录时相同的服务商，否则 state 签名用的 key 对不上，必然校验失败
+      const provider = providerFor(type);
+      if (!provider) {
+        return res.status(400).send("回调校验失败，请重新登录");
+      }
       // 优先用 URL 上带回的 state，取不到时回退到登录时写入的 cookie
       const jar = parseCookies(req.headers.cookie);
       const [cType, cState] = String(jar[OAUTH_STATE_COOKIE] || "").split(":");
       const stateOk =
-        verifyState(type, String(state || "")) ||
-        (cType === type && verifyState(type, String(cState || "")));
+        verifyState(type, String(state || ""), provider) ||
+        (cType === type && verifyState(type, String(cState || ""), provider));
       // state 一次性：无论成败都清掉，避免重放
       res.setHeader("Set-Cookie", `${OAUTH_STATE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`);
       if (!OAUTH_TYPES.includes(type) || !code || !stateOk) {
         return res.status(400).send("回调校验失败，请重新登录");
       }
-      const arr = await cccyunCallback(type, String(code));
+      const arr = await cccyunCallback(provider, type, String(code));
       if (!arr || arr.code !== 0 || !arr.social_uid) {
         return res.status(502).send(`第三方登录失败：${(arr && arr.msg) || "未知错误"}`);
       }
