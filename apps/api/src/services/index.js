@@ -452,13 +452,24 @@ async function buildBoardSingers(period = "daily", issue = null, limit = 10, kin
       : canonicalGirls(it.girls || []);
     for (const name of names) {
       if (!name) continue;
-      const g = agg.get(name) || { name: byProducer ? it.owner?.name || "未知UP主" : name, count: 0, score: 0, top: [] };
+      const g = agg.get(name) || {
+        name: byProducer ? it.owner?.name || "未知UP主" : name,
+        count: 0,
+        score: 0,
+        view: 0,
+        favorite: 0,
+        top: [],
+      };
       if (byProducer && !g.mid) {
         g.mid = Number(it.owner?.mid) || null;
         g.face = it.owner?.face || null;
       }
       g.count += 1;
       g.score += it.score || 0;
+      // 播放/收藏按投稿累加：/singers 的排序维度要用，
+      // 且必须跟着「本期」口径走（此前该页读的是全库 /api/girls，与当期榜对不上）
+      g.view += it.view || 0;
+      g.favorite += it.favorite || 0;
       if (g.top.length < 5) {
         g.top.push({ aid: it.aid, title: it.title, score: it.score || 0 });
       }
@@ -466,19 +477,20 @@ async function buildBoardSingers(period = "daily", issue = null, limit = 10, kin
     }
   }
 
-  const list = [...agg.values()]
-    .sort((a, b) => b.score - a.score || b.count - a.count)
-    .slice(0, limit)
-    .map((g) =>
-      byProducer
-        ? { ...g, id: null }
-        : {
-            ...g,
-            id: singerMap[g.name]?.vocabili_id ?? singerMap[g.name]?.vocadb_id ?? null,
-            is_vs: Boolean(singerMap[g.name]?.is_vs),
-            picture: singerMap[g.name]?.picture ?? singerMap[g.name]?.pic ?? null,
-          },
-    );
+  const all = [...agg.values()].sort((a, b) => b.score - a.score || b.count - a.count);
+  // limit<=0 表示不限量（/singers 页要全量展示本期）。
+  // 备注：本期日刊去重后歌手 ~27 位、P主 ~1018 位，全量体积可控（P主全量约 250KB）。
+  const picked = limit > 0 ? all.slice(0, limit) : all;
+  const list = picked.map((g) =>
+    byProducer
+      ? { ...g, id: null }
+      : {
+          ...g,
+          id: singerMap[g.name]?.vocabili_id ?? singerMap[g.name]?.vocadb_id ?? null,
+          is_vs: Boolean(singerMap[g.name]?.is_vs),
+          picture: singerMap[g.name]?.picture ?? singerMap[g.name]?.pic ?? null,
+        },
+  );
 
   return {
     issue: d?.issue ?? null,
@@ -488,6 +500,7 @@ async function buildBoardSingers(period = "daily", issue = null, limit = 10, kin
     date_start: d?.date_start ?? null,
     date_end: d?.date_end ?? null,
     count: list.length,
+    total: all.length,
     type: byProducer ? "producer" : "singer",
     list,
   };
