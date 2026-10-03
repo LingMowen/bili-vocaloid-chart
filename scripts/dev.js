@@ -7,13 +7,19 @@
  * 跑去改配置——而真正的问题只是有个上次的僵尸还活着。
  *
  * 用法：
- *   node scripts/dev.js start     起 API + Web，等健康后打印 pid / 端口
- *   node scripts/dev.js stop      停掉（含按端口兜底清理僵尸）
- *   node scripts/dev.js restart   = stop + start
- *   node scripts/dev.js status    只报告，不改任何东西
+ *   node scripts/dev.js start             起 API + Web(dev server)，等健康后打印 pid / 端口
+ *   node scripts/dev.js start --preview   起 API + Preview(dist 构建产物，供隧道暴露)
+ *   node scripts/dev.js stop              停掉全部（含按端口兜底清理僵尸）
+ *   node scripts/dev.js restart           = stop + start
+ *   node scripts/dev.js status            只报告，不改任何东西
+ *
+ * ⚠ dev server 与 preview 的区别（重要）：
+ *   dev server 会把整个仓库当静态根，任何人访问 /@fs/<绝对路径> 都能读到
+ *   .git/config、apps/api/cache/library.json 等任意文件。所以 dev server 只能
+ *   本机自己用；要对公网开隧道，必须用 --preview（只服务 dist/，且不暴露 /@fs/）。
  *
  * 运行时文件都落在 <repo>/.tmp/run/（已被 .gitignore 忽略），不污染仓库根目录。
- * 日志：.tmp/run/api.out.log、api.err.log、web.out.log、web.err.log
+ * 日志：.tmp/run/api.out.log、api.err.log、web.out.log、web.err.log、preview.*.log
  */
 
 const { spawn, execFileSync } = require("node:child_process");
@@ -25,30 +31,48 @@ const ROOT = path.join(__dirname, "..");
 const RUN = path.join(ROOT, ".tmp", "run");
 
 /**
- * 两个服务的定义。
+ * 服务的定义。
  * 都直接用当前 node 跑入口脚本，不经过 npm —— 少一层进程，多一层可控性，
  * 也避免 Windows 上 spawn .cmd 需要 shell 的坑。
  */
-const SERVICES = [
-  {
-    name: "api",
-    label: "API      ",
-    ports: [1003, 1006],
-    health: "http://127.0.0.1:1003/api/stats",
-    cmd: process.execPath,
-    args: [path.join(ROOT, "apps", "api", "src", "index.js")],
-    cwd: ROOT,
-  },
-  {
-    name: "web",
-    label: "Web      ",
-    ports: [1005],
-    health: "http://127.0.0.1:1005/",
-    cmd: process.execPath,
-    args: [path.join(ROOT, "node_modules", "vite", "bin", "vite.js")],
-    cwd: path.join(ROOT, "apps", "web"),
-  },
-];
+const SVC_API = {
+  name: "api",
+  label: "API      ",
+  ports: [1003, 1006],
+  health: "http://127.0.0.1:1003/api/stats",
+  cmd: process.execPath,
+  args: [path.join(ROOT, "apps", "api", "src", "index.js")],
+  cwd: ROOT,
+};
+
+/** 开发用：热更新，但会把整个仓库暴露成静态根，只能本机自己用。 */
+const SVC_WEB_DEV = {
+  name: "web",
+  label: "Web(dev) ",
+  ports: [1005],
+  health: "http://127.0.0.1:1005/",
+  cmd: process.execPath,
+  args: [path.join(ROOT, "node_modules", "vite", "bin", "vite.js")],
+  cwd: path.join(ROOT, "apps", "web"),
+};
+
+/** 对公网用：只服务 dist/ 构建产物，不暴露 /@fs/，可以安全地挂隧道。 */
+const SVC_WEB_PREVIEW = {
+  name: "preview",
+  label: "Web(prev)",
+  ports: [1007],
+  health: "http://127.0.0.1:1007/",
+  cmd: process.execPath,
+  args: [path.join(ROOT, "node_modules", "vite", "bin", "vite.js"), "preview"],
+  cwd: path.join(ROOT, "apps", "web"),
+};
+
+/** stop / status 覆盖全部，这样切模式时不会留下上一模式的僵尸。 */
+const ALL_SERVICES = [SVC_API, SVC_WEB_DEV, SVC_WEB_PREVIEW];
+const MODES = {
+  dev: [SVC_API, SVC_WEB_DEV],
+  preview: [SVC_API, SVC_WEB_PREVIEW],
+};
 
 // ────────────────────────────────────────────────────────── 基础设施
 
@@ -148,7 +172,7 @@ function probe(url, timeoutMs = 1500) {
 
 async function stop() {
   log(C.bold("停止服务"));
-  for (const svc of SERVICES) {
+  for (const svc of ALL_SERVICES) {
     // 两路取 pid：pid 文件里的，和端口实际占着的。取并集，才能清掉僵尸。
     const fromFile = readPid(svc.name);
     const fromPort = pidsOnPorts(svc.ports);
@@ -177,12 +201,32 @@ async function stop() {
   log();
 }
 
-async function start() {
+async function start(mode = "dev") {
   fs.mkdirSync(RUN, { recursive: true });
-  log(C.bold("启动服务"));
+  const services = MODES[mode];
+  if (!services) {
+    log(`${C.red("未知模式")}：${mode}（可选 dev | preview）`);
+    return false;
+  }
+  log(C.bold(`启动服务 ${C.dim(`[${mode}]`)}`));
+
+  // 切模式前先清掉另一种 web 的残留，否则会出现「两个 web 抢同一个后端」
+  const stale = ALL_SERVICES.filter(
+    (s) => s.name !== "api" && !services.includes(s)
+  );
+  for (const s of stale) {
+    const onPorts = pidsOnPorts(s.ports);
+    if (onPorts.length > 0) {
+      log(`  ${s.label} ${C.yellow("清掉另一模式的残留")} pid ${onPorts.join(", ")}`);
+      for (const pid of onPorts) killTree(pid);
+      for (let i = 0; i < 20 && pidsOnPorts(s.ports).length > 0; i++) await sleep(150);
+      try { fs.unlinkSync(pidFile(s.name)); } catch { /* 无所谓 */ }
+    }
+  }
+
   let anyFail = false;
 
-  for (const svc of SERVICES) {
+  for (const svc of services) {
     // 先看端口是不是已经有人了——占着就明确报出来，不要闷头起第二份
     const occupied = pidsOnPorts(svc.ports);
     if (occupied.length > 0) {
@@ -244,12 +288,15 @@ async function start() {
 
 async function status() {
   log(C.bold("服务状态"));
-  let allOk = true;
-  for (const svc of SERVICES) {
+  let apiOk = false;
+  let webOk = false;
+
+  for (const svc of ALL_SERVICES) {
     const pid = readPid(svc.name);
     const onPorts = pidsOnPorts(svc.ports);
     const health = await probe(svc.health);
-    if (!health) allOk = false;
+    if (svc.name === "api") apiOk = health;
+    else if (health) webOk = true;
 
     // pid 文件与端口实况可能不一致，那是真信息，不是噪声——说明有僵尸或有人手改了
     const drift =
@@ -257,31 +304,38 @@ async function status() {
         ? C.yellow(`  ⚠ pid 文件(${pid ?? "无"}) 与端口实况(${onPorts.join(",")})不一致`)
         : "";
 
+    // dev 与 preview 互斥，没跑的那个不算故障，标成「未启用」即可
+    const idle = svc.name !== "api" && !health && onPorts.length === 0;
     log(
-      `  ${svc.label} ${health ? C.green("在线") : C.red("离线")}  ` +
+      `  ${svc.label} ${health ? C.green("在线") : idle ? C.dim("未启用") : C.red("离线")}  ` +
         `端口 ${svc.ports.join("/")}  实际 pid ${onPorts.join(",") || C.dim("无")}${drift}`
     );
   }
   log();
-  return allOk;
+  // 判据：API 在线，且至少有一个 web（dev 或 preview）在线
+  return apiOk && webOk;
 }
 
 // ────────────────────────────────────────────────────────── 入口
 
+const action = process.argv[2];
+const flags = process.argv.slice(3);
+const MODE = flags.includes("--preview") ? "preview" : "dev";
+
 const ACTIONS = {
-  start: () => start().then((ok) => process.exit(ok ? 0 : 1)),
+  start: () => start(MODE).then((ok) => process.exit(ok ? 0 : 1)),
   stop: () => stop().then(() => process.exit(0)),
   restart: async () => {
     await stop();
-    const ok = await start();
+    const ok = await start(MODE);
     process.exit(ok ? 0 : 1);
   },
   status: () => status().then((ok) => process.exit(ok ? 0 : 1)),
 };
 
-const action = process.argv[2];
 if (!ACTIONS[action]) {
-  log(`${C.bold("用法")} node scripts/dev.js <start|stop|restart|status>`);
+  log(`${C.bold("用法")} node scripts/dev.js <start|stop|restart|status> [--preview]`);
+  log(`  ${C.dim("不加 --preview 起 dev server(1005，仅本机)；加了起 preview(1007，可挂隧道)")}`);
   process.exit(2);
 }
 ACTIONS[action]();
