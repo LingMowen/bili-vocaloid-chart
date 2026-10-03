@@ -126,12 +126,20 @@ function niceAxis(min, max, forceInt = false) {
   return { ticks: mkVals(min, max, step), step };
 }
 function hlines(ax) {
+  if (ax.mode === "log") {
+    // 对数轴的 min/max 已是原始值，参考线 yAxis 同样用原始值；
+    // 但「离轴端多近就不画」这个边距必须在 log 空间量，否则原始值量纲下
+    // r 可能是几百万，边距会把整批参考线全吃掉
+    const r = (ax.logMax ?? 0) - (ax.logMin ?? 0);
+    if (r <= 0) return [];
+    const n = r * 0.02;
+    return (ax.logTicks || [])
+      .filter((s) => q(s) > ax.logMin + n && q(s) < ax.logMax - n)
+      .map((s) => ({ yAxis: s }));
+  }
   const r = ax.axisMax - ax.axisMin;
   if (r <= 0) return [];
   const n = r * 0.02;
-  if (ax.mode === "log") {
-    return (ax.logTicks || []).filter((s) => q(s) > ax.axisMin + n && q(s) < ax.axisMax - n).map((s) => ({ yAxis: q(s) }));
-  }
   return (ax.ticks || []).filter((s) => s > ax.axisMin + n && s < ax.axisMax - n).map((s) => ({ yAxis: s }));
 }
 
@@ -251,7 +259,19 @@ function RankChart({ records, active, log, labels }) {
         if (q(mn) < lo) lo = q(mn) - A;
         if (q(mx) > hi) hi = q(mx) + L;
         lo = Math.max(0, lo);
-        info = { mode: "log", axisMin: lo, axisMax: hi, logTicks: kk };
+        // 关键：ECharts 的 log 轴 min/max 要的是「原始值」，不是 log10 后的值。
+        // 上面 lo/hi 全在 log10 量纲里算（为了按 1/2/5 取整齐刻度），交给 ECharts 前
+        // 必须用 Math.pow(10, …) 转回原始值；不转的话整条折线会被画到画布外，
+        // 表现为「切换对数后折线消失」。
+        info = {
+          mode: "log",
+          axisMin: Math.pow(10, lo),
+          axisMax: Math.pow(10, hi),
+          // 参考线/刻度判断仍在 log 空间做，单独留一份 log10 量纲的边界
+          logMin: lo,
+          logMax: hi,
+          logTicks: kk,
+        };
       } else if (vals.length > 1) {
         const [R, S] = linAxis(vals);
         const { ticks, step } = niceAxis(R, S, vals.every((v) => Number.isInteger(v)));
