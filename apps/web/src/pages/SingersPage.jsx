@@ -133,6 +133,9 @@ export default function SingersPage() {
                 picture={e.picture}
                 name={e.name}
                 alt={e.name}
+                // 官方也没有 logo 的引擎（Talk Ex / TALQu）走名称首字母徽标兜底，
+                // 避免卡片出现「空缺」观感；有 picture 时该字段不生效。
+                fallbackText={e.name}
                 // 本站暂无引擎详情页（参考站 /synthesizer/:id），故不加跳转。
                 // 副文本给出「该引擎下收录了多少首 + 覆盖多少位歌手」。
                 // ⚠ 首数用 fmt 原始数字（18,602），不用 ke 缩写：zh 的 video.k 是空串，

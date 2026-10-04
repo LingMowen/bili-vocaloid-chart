@@ -25,7 +25,14 @@ export const ENTITY_GRID_NARROW = "grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-
 const CARD_CLS =
   "group flex flex-col items-center gap-1.5 rounded-xl border bg-card p-3 text-center transition-shadow hover:shadow-md sm:rounded-2xl sm:p-4";
 
-export function EntityCard({ to, href, picture, name, nameNode, sub, alt }) {
+export function EntityCard({ to, href, picture, name, nameNode, sub, alt, fallbackText }) {
+  // 无图时的兜底分两种：
+  //   有名称 → 用名称首字做字母徽标（歌手 艾尔法、引擎 Talk Ex / TALQu 这类
+  //            官方确实没图的条目，此前是一片空缺的灰框，观感像加载失败）
+  //   没名称 → 通用 lucide-music 占位
+  // 字母徽标只是排版兜底，**不冒充官方 logo**。
+  const label = fallbackText ?? (typeof name === "string" ? name : "");
+  const initial = label ? [...label.trim()][0] ?? "" : "";
   const body = (
     <>
       <div
@@ -41,6 +48,13 @@ export function EntityCard({ to, href, picture, name, nameNode, sub, alt }) {
             referrerPolicy="no-referrer"
             className="h-full w-full object-cover"
           />
+        ) : initial ? (
+          <span
+            aria-hidden="true"
+            className="select-none text-lg font-semibold uppercase leading-none text-blue-500 sm:text-xl"
+          >
+            {initial}
+          </span>
         ) : (
           <Music className="h-5 w-5 text-blue-500 sm:h-6 sm:w-6" aria-hidden="true" />
         )}
