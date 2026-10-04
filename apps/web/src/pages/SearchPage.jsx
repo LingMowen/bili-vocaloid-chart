@@ -514,6 +514,7 @@ export default function SearchPage() {
             {engines.map((e) => (
               <EntityCard
                 key={e.id ?? e.name}
+                picture={e.picture}
                 name={e.name}
                 alt={e.name}
                 nameNode={<Highlight text={e.name} keyword={keyword} />}

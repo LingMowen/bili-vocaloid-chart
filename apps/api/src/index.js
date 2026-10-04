@@ -974,19 +974,30 @@ app.get("/api/singers", (req, res, next) => {
   }
   return res.json({ ok: true, data: { singers } });
 });
-// 引擎（合成器）聚合榜。数据源 = singers.json 的 engines 字段。
+// 引擎（合成器）聚合榜。数据源 = singers.json 的 engines 字段 + engine_meta。
 // 为什么需要它：/singers 与 /search 的「引擎」分类此前直接渲染「数据未收录，敬请期待」，
-// 但 singers.json 里 23 位歌手**全部**带非空 engines（去重后 13 种合成器，VOCALOID 18602 首、
-// Synthesizer V 4364 首…）—— 文案与事实不符，是用户报的「显示未收集但实际已收集」。
+// 但 singers.json 里歌手**全部**带非空 engines（去重后 15 种合成器）。
+//
+// 引擎卡片此前一律渲染成 lucide-music 占位图标，因为聚合时只带 id/name/count，
+// 没有 logo —— 前端 EntityCard 无 picture 就走占位分支。logo 来自 singers.json 的
+// engine_meta（构建时从官方 /v3/synthesizer/list 拉取）。
 app.get("/api/engines", (req, res) => {
   const d = readCached("singers.json");
   if (!d || !d.singers) return fail(res, 404, "singers 库尚未生成");
+  const meta = d.engine_meta || {};
   const map = new Map();
   for (const s of Object.values(d.singers)) {
     for (const e of s?.engines || []) {
       if (!e || e.id == null || !e.name) continue;
       const key = String(e.id);
-      const g = map.get(key) || { id: e.id, name: e.name, count: 0, singers: [] };
+      const g = map.get(key) || {
+        id: e.id,
+        name: e.name,
+        count: 0,
+        // 官方合成器 logo；官方也没图的（Talk Ex / TALQu）留 null，前端仍走占位图标
+        picture: meta[key]?.picture ?? null,
+        singers: [],
+      };
       g.count += e.count || 0;
       g.singers.push({
         name: s.name,

@@ -128,6 +128,9 @@ export default function SingersPage() {
             {engines.map((e) => (
               <EntityCard
                 key={e.id ?? e.name}
+                // 引擎 logo 来自 singers.json 的 engine_meta（官方 /v3/synthesizer/list）。
+                // 官方也没图的（Talk Ex / TALQu）留空，EntityCard 自动退回占位图标。
+                picture={e.picture}
                 name={e.name}
                 alt={e.name}
                 // 本站暂无引擎详情页（参考站 /synthesizer/:id），故不加跳转。
