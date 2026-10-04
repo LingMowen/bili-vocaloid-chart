@@ -101,36 +101,31 @@ function SongCardGrid({ songs }) {
             >
               {thumb}
               <div className="overflow-hidden rounded-b-xl p-4">
-                <span className="block max-w-full overflow-hidden text-base font-semibold">
-                  <span className="inline-block whitespace-nowrap">{s.display_name || s.name}</span>
-                </span>
+                {/* 单行 + 省略号（原来是 overflow-hidden + whitespace-nowrap 硬裁，没有 …） */}
+                <span className="block max-w-full truncate text-base font-semibold">{s.display_name || s.name}</span>
                 <div className="mt-2 text-sm text-muted-foreground">
-                  <span className="block max-w-full overflow-hidden">
-                    <span className="inline-block whitespace-nowrap">
-                      {(s.vocalists || []).map((x, i) => (
-                        <span key={`${x.vocalist?.id ?? "v"}-${i}`} className="shrink-0">
-                          {i > 0 && "、"}
-                          <Link
-                            to={`/singer/${x.vocalist?.id}`}
-                            className="hover:text-primary hover:underline"
-                          >
-                            {x.vocalist?.name}
-                          </Link>
-                        </span>
-                      ))}
-                    </span>
+                  <span className="block max-w-full truncate">
+                    {(s.vocalists || []).map((x, i) => (
+                      <span key={`${x.vocalist?.id ?? "v"}-${i}`}>
+                        {i > 0 && "、"}
+                        <Link
+                          to={`/singer/${x.vocalist?.id}`}
+                          className="hover:text-primary hover:underline"
+                        >
+                          {x.vocalist?.name}
+                        </Link>
+                      </span>
+                    ))}
                   </span>
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  <span className="block max-w-full overflow-hidden">
-                    <span className="inline-block whitespace-nowrap">
-                      {(s.producers || []).map((x, i) => (
-                        <span key={x.producer?.id ?? i} className="shrink-0">
-                          {i > 0 && "、"}
-                          {x.producer?.name}
-                        </span>
-                      ))}
-                    </span>
+                  <span className="block max-w-full truncate">
+                    {(s.producers || []).map((x, i) => (
+                      <span key={x.producer?.id ?? i}>
+                        {i > 0 && "、"}
+                        {x.producer?.name}
+                      </span>
+                    ))}
                   </span>
                 </div>
               </div>

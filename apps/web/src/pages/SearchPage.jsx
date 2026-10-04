@@ -13,14 +13,14 @@ const HISTORY_KEY = "bili-vocaloid-chart-search-history";
 const HISTORY_MAX = 10;
 const PAGE_SIZE = 20;
 
-// 参考站 /search 6 段 tabs（歌曲/视频/歌手/P主/引擎/UP主）
+// 参考站 /search 分段 tabs。**去掉「UP主」**：它与「P主」在数据层是同一个东西
+// （两段都打 /api/owners?sort=works），保留只会给出两份一样的结果 —— 用户已明确要求去除。
 const TAB_SEGS = [
   ["song", "search.typeSong"],
   ["video", "search.typeVideo"],
   ["singer", "search.typeSinger"],
   ["producer", "search.typeProducer"],
   ["engine", "search.typeEngine"],
-  ["user", "search.typeUser"],
 ];
 
 function loadHistory() {
@@ -124,42 +124,36 @@ function VideoCard({ item, keyword }) {
       </div>
       <div className="overflow-hidden rounded-b-xl p-4">
         <Link to={`/video/${item.aid}`} className="block hover:text-primary">
-          <span className="block max-w-full overflow-hidden text-base font-semibold">
-            <span className="inline-block whitespace-nowrap">
-              <Highlight text={item.title} keyword={keyword} />
-            </span>
+          {/* 单行 + 省略号（原来是 overflow-hidden + whitespace-nowrap 硬裁，没有 …） */}
+          <span className="block max-w-full truncate text-base font-semibold">
+            <Highlight text={item.title} keyword={keyword} />
           </span>
         </Link>
         <div className="mt-2 text-sm text-muted-foreground">
-          <span className="block max-w-full overflow-hidden">
-            <span className="inline-block whitespace-nowrap">
-              {girls.length > 0 ? (
-                girls.map((g, i) => (
-                  <span key={g} className="shrink-0">
-                    {i > 0 ? " / " : ""}
-                    <Link to={`/search?keyword=${encodeURIComponent(g)}`} className="hover:text-primary hover:underline">
-                      <Highlight text={g} keyword={keyword} />
-                    </Link>
-                  </span>
-                ))
-              ) : (
-                <span className="shrink-0 text-muted-foreground/70">—</span>
-              )}
-            </span>
+          {/* 合作者单行 + …；完整名单见详情页 */}
+          <span className="block max-w-full truncate">
+            {girls.length > 0 ? (
+              girls.map((g, i) => (
+                <span key={g}>
+                  {i > 0 ? " / " : ""}
+                  <Link to={`/search?keyword=${encodeURIComponent(g)}`} className="hover:text-primary hover:underline">
+                    <Highlight text={g} keyword={keyword} />
+                  </Link>
+                </span>
+              ))
+            ) : (
+              <span className="text-muted-foreground/70">—</span>
+            )}
           </span>
         </div>
         <div className="mt-1 text-sm text-muted-foreground">
-          <span className="block max-w-full overflow-hidden">
-            <span className="inline-block whitespace-nowrap">
-              <span className="shrink-0">
-                <Link
-                  to={item.owner?.mid ? `/member/${item.owner.mid}` : `/search?keyword=${encodeURIComponent(ownerName)}`}
-                  className="hover:text-primary hover:underline"
-                >
-                  <Highlight text={ownerName} keyword={keyword} />
-                </Link>
-              </span>
-            </span>
+          <span className="block max-w-full truncate">
+            <Link
+              to={item.owner?.mid ? `/member/${item.owner.mid}` : `/search?keyword=${encodeURIComponent(ownerName)}`}
+              className="hover:text-primary hover:underline"
+            >
+              <Highlight text={ownerName} keyword={keyword} />
+            </Link>
           </span>
         </div>
       </div>
@@ -273,7 +267,7 @@ export default function SearchPage() {
       api(`/api/owners?keyword=${encodeURIComponent(keyword)}&sort=works&page=${pageParam}`, { silent: true }),
     initialPageParam: 1,
     getNextPageParam: (last) => (last.page < last.pages ? last.page + 1 : undefined),
-    enabled: !!keyword && (type === "producer" || type === "user"),
+    enabled: !!keyword && type === "producer",
   });
 
   // 歌手搜索：复用 /api/girls，前端按名称/标签过滤
@@ -281,6 +275,13 @@ export default function SearchPage() {
     queryKey: qk.singers({}),
     queryFn: () => api("/api/girls", { silent: true }),
     enabled: !!keyword && type === "singer",
+  });
+
+  // 引擎搜索：/api/engines 返回全部引擎（当前 13 种），前端按名称过滤即可。
+  const enginesQ = useQuery({
+    queryKey: qk.engines(),
+    queryFn: () => api("/api/engines", { silent: true }),
+    enabled: !!keyword && type === "engine",
   });
 
   const videos = videosQ.data?.pages.flatMap((p) => p.items || []) || [];
@@ -295,35 +296,44 @@ export default function SearchPage() {
     ? girlsAll.filter((g) => (g.name || "").toLowerCase().includes(keyword.toLowerCase()))
     : [];
 
-  const err = videosQ.error?.message || usersQ.error?.message || girlsQ.error?.message;
+  const enginesAll = Array.isArray(enginesQ.data?.list) ? enginesQ.data.list : [];
+  const engines = keyword
+    ? enginesAll.filter((e) => (e.name || "").toLowerCase().includes(keyword.toLowerCase()))
+    : [];
+
+  const err = videosQ.error?.message || usersQ.error?.message || girlsQ.error?.message || enginesQ.error?.message;
 
   const isSearching =
     !!keyword &&
     ((type === "song" || type === "video") && (videosQ.isLoading || videosQ.isFetching)) ||
-    ((type === "producer" || type === "user") && (usersQ.isLoading || usersQ.isFetching)) ||
+    ((type === "producer") && (usersQ.isLoading || usersQ.isFetching)) ||
+    (type === "engine" && (enginesQ.isLoading || enginesQ.isFetching)) ||
     (type === "singer" && (girlsQ.isLoading || girlsQ.isFetching));
 
   const hasAny =
     (type === "song" || type === "video") ? videoTotal > 0
-    : (type === "producer" || type === "user") ? userTotal > 0
+    : (type === "producer") ? userTotal > 0
     : type === "singer" ? girls.length > 0
+    : type === "engine" ? engines.length > 0
     : false;
 
   const totalItems =
     type === "song" || type === "video" ? videoTotal
-    : type === "producer" || type === "user" ? userTotal
+    : type === "producer" ? userTotal
     : type === "singer" ? girls.length
+    : type === "engine" ? engines.length
     : 0;
 
   const loadedCount =
     type === "song" || type === "video" ? videos.length
-    : type === "producer" || type === "user" ? users.length
+    : type === "producer" ? users.length
     : type === "singer" ? girls.length
+    : type === "engine" ? engines.length
     : 0;
 
   function go(kw, opts = {}) {
     const nextType = opts.type ?? type;
-    const nextSort = opts.sort ?? (nextType === "producer" || nextType === "user" ? "works" : sort);
+    const nextSort = opts.sort ?? (nextType === "producer" ? "works" : sort);
     const k = kw.trim();
     if (!k) {
       setParams({});
@@ -334,7 +344,7 @@ export default function SearchPage() {
       setHistory(loadHistory());
       const q = { keyword: k };
       if (nextType !== "song") q.type = nextType;
-      if (nextType !== "producer" && nextType !== "user" && nextSort !== "score") q.sort = nextSort;
+      if (nextType !== "producer" && nextSort !== "score") q.sort = nextSort;
       setParams(q);
     }
   }
@@ -386,7 +396,7 @@ export default function SearchPage() {
         <div className="mb-4 flex items-center gap-2 sm:mb-6 sm:gap-3">
           <SegmentedTabs
             className="flex-1"
-            gridClass="grid-cols-3 sm:grid-cols-6"
+            gridClass="grid-cols-3 sm:grid-cols-5"
             value={type}
             onChange={(v) => go(keyword, { type: v })}
             items={TAB_SEGS.map(([val, labelKey]) => [val, t(labelKey)])}
@@ -471,13 +481,6 @@ export default function SearchPage() {
 
       {!isSearching && err && <p className="py-6 text-center text-sm text-destructive">{err}</p>}
 
-      {/* 引擎分类：数据未收录 */}
-      {!isSearching && type === "engine" && keyword && (
-        <div className="rounded-lg border border-dashed bg-card py-16 text-center text-sm text-muted-foreground sm:rounded-xl sm:py-20 sm:text-base">
-          {t("search.tabPending")}
-        </div>
-      )}
-
       {!isSearching && keyword && hasAny && type === "singer" && (
         <div>
           <div className="mb-3 text-xs text-muted-foreground sm:mb-4 sm:text-sm">
@@ -499,12 +502,37 @@ export default function SearchPage() {
         </div>
       )}
 
+      {/* 引擎分类：数据源 = /api/engines（singers.json 的 engines 字段）。
+          此前这里无条件渲染「该分类数据未收录，敬请期待」，但库里 13 种引擎全部有数据。 */}
+      {!isSearching && keyword && hasAny && type === "engine" && (
+        <div>
+          <div className="mb-3 text-xs text-muted-foreground sm:mb-4 sm:text-sm">
+            {t("search.resultCount", { total: fmt(totalItems), shown: fmt(loadedCount) })}
+          </div>
+          <h3 className="mb-3 px-1 text-sm font-semibold sm:mb-4">{t("search.sectionEngines")}</h3>
+          <div className={ENTITY_GRID_WIDE}>
+            {engines.map((e) => (
+              <EntityCard
+                key={e.id ?? e.name}
+                name={e.name}
+                alt={e.name}
+                nameNode={<Highlight text={e.name} keyword={keyword} />}
+                sub={t("singers.engineLine", {
+                  n: e.singers?.length ?? 0,
+                  count: fmt(e.count),
+                })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {!isSearching && keyword && hasAny && type !== "singer" && type !== "engine" && (
         <div>
           <div className="mb-3 text-xs text-muted-foreground sm:mb-4 sm:text-sm">
             {t("search.resultCount", { total: fmt(totalItems), shown: fmt(loadedCount) })}
           </div>
-          {(type === "producer" || type === "user") && (
+          {type === "producer" && (
             <div className="space-y-2.5">
               <h3 className="px-1 text-sm font-semibold">
                 {t("search.sectionUsers")}
@@ -547,7 +575,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {!isSearching && !err && keyword && !hasAny && type !== "engine" && (
+      {!isSearching && !err && keyword && !hasAny && (
         <div className="rounded-lg border border-dashed bg-card py-16 text-center text-sm text-muted-foreground sm:rounded-xl sm:py-20 sm:text-base">
           {t("search.noResult")}
         </div>

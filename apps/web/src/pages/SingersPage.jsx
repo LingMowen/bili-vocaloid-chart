@@ -6,10 +6,14 @@ import { qk } from "../queryKeys.js";
 import { EntityCard, ENTITY_GRID_WIDE } from "../components/ui/EntityCard.jsx";
 import { SegmentedTabs, PillTabs } from "../components/ui/Tabs.jsx";
 
-const TAB_KEY = ["singer", "producer", "engine", "uploader"];
+// 只有三段。**没有 UP主**：参考站的「UP主」与「P主」是同一份数据
+// （/api/board/singers 的 type 只认 singer|producer，传 uploader 会退化成歌姬榜），
+// 保留第四个 tab 只会显示重复内容 —— 用户已明确要求去除。
+const TAB_KEY = ["singer", "producer", "engine"];
 
 // 排序维度。score 是本期榜单得分（pt），view/favorite/count 同样是**本期**口径
 // —— 数据源是 /api/board/singers（按当期榜单聚合），不是全库 /api/girls。
+// 引擎 tab 不适用（/api/engines 只按累计作品数排），故该 tab 下隐藏排序。
 const ORDER_KEY = ["score", "view", "favorite", "count"];
 
 function ke(n, units) {
@@ -35,6 +39,14 @@ function LoadingGrid() {
   );
 }
 
+function EmptyBox({ children }) {
+  return (
+    <div className="rounded-lg border border-dashed bg-card py-16 text-center text-sm text-muted-foreground sm:rounded-xl sm:py-20">
+      {children}
+    </div>
+  );
+}
+
 export default function SingersPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState("singer");
@@ -47,38 +59,31 @@ export default function SingersPage() {
     [1e3, t("video.k")],
   ];
 
-  const isPendingTab = tab === "engine" || tab === "uploader";
-  // 口径：只看当期日刊。limit=all 让 /singers 拿到本期全部（歌手 ~27 位、P主 ~1000 位）。
-  const { data, isLoading, error } = useQuery({
+  const isEngine = tab === "engine";
+
+  // 歌手 / P主：口径只看当期日刊。limit=all 让 /singers 拿到本期全部（歌手 ~27 位、P主 ~1000 位）。
+  const boardQ = useQuery({
     queryKey: qk.singerBoard({ period: "daily", type: tab, limit: "all" }),
     queryFn: () => api(`/api/board/singers?period=daily&type=${tab}&limit=all`, { silent: true }),
-    enabled: !isPendingTab,
+    enabled: !isEngine,
   });
 
-  const list = Array.isArray(data?.list) ? data.list : [];
-  const err = error?.message;
+  // 引擎：数据源是 singers.json 的 engines 字段（23 位歌手全部带非空 engines，
+  // 去重后 13 种合成器）。此前这里渲染「数据未收录，敬请期待」——与事实不符。
+  const enginesQ = useQuery({
+    queryKey: qk.engines(),
+    queryFn: () => api("/api/engines", { silent: true }),
+    enabled: isEngine,
+  });
 
-  if (isPendingTab) {
-    return (
-      <section className="mx-auto w-full max-w-6xl min-w-0 space-y-6">
-        <SegmentedTabs
-          gridClass="grid-cols-4"
-          value={tab}
-          onChange={setTab}
-          items={TAB_KEY.map((key) => [
-            key,
-            t(`singers.tab${key.charAt(0).toUpperCase()}${key.slice(1)}`),
-          ])}
-        />
-        <div className="rounded-lg border border-dashed bg-card py-16 text-center text-sm text-muted-foreground sm:rounded-xl sm:py-20">
-          {t("singers.tabPending")}
-        </div>
-      </section>
-    );
-  }
+  const data = boardQ.data;
+  const list = Array.isArray(data?.list) ? data.list : [];
+  const engines = Array.isArray(enginesQ.data?.list) ? enginesQ.data.list : [];
+  const err = boardQ.error?.message || enginesQ.error?.message;
+  const isLoading = isEngine ? enginesQ.isLoading : boardQ.isLoading;
 
   if (err) return <p className="text-sm text-destructive">{err}</p>;
-  if (isLoading && !data) return <LoadingGrid />;
+  if (isLoading && !boardQ.data && !enginesQ.data) return <LoadingGrid />;
 
   const sorted = [...list].sort((a, b) => (b[order] ?? 0) - (a[order] ?? 0));
 
@@ -86,7 +91,7 @@ export default function SingersPage() {
     <section className="mx-auto w-full max-w-6xl min-w-0 space-y-6">
       <div className="space-y-3">
         <SegmentedTabs
-          gridClass="grid-cols-4"
+          gridClass="grid-cols-3"
           value={tab}
           onChange={setTab}
           items={TAB_KEY.map((key) => [
@@ -97,23 +102,46 @@ export default function SingersPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground sm:text-sm">
-            {t("singers.descIssue", {
-              n: list.length,
-              issue: data?.issue ?? "-",
-              date: data?.date_start ?? "-",
-            })}
+            {isEngine
+              ? t("singers.descEngine", { n: engines.length })
+              : t("singers.descIssue", {
+                  n: list.length,
+                  issue: data?.issue ?? "-",
+                  date: data?.date_start ?? "-",
+                })}
           </p>
-          <PillTabs
-            tone="card"
-            size="sm"
-            value={order}
-            onChange={setOrder}
-            items={ORDER_KEY.map((key) => [key, t(`singers.ord${key.charAt(0).toUpperCase()}${key.slice(1)}`)])}
-          />
+          {!isEngine && (
+            <PillTabs
+              tone="card"
+              size="sm"
+              value={order}
+              onChange={setOrder}
+              items={ORDER_KEY.map((key) => [key, t(`singers.ord${key.charAt(0).toUpperCase()}${key.slice(1)}`)])}
+            />
+          )}
         </div>
       </div>
 
-      {list.length ? (
+      {isEngine ? (
+        engines.length ? (
+          <div className={ENTITY_GRID_WIDE}>
+            {engines.map((e) => (
+              <EntityCard
+                key={e.id ?? e.name}
+                name={e.name}
+                alt={e.name}
+                // 本站暂无引擎详情页（参考站 /synthesizer/:id），故不加跳转。
+                // 副文本给出「该引擎下收录了多少首 + 覆盖多少位歌手」。
+                // ⚠ 首数用 fmt 原始数字（18,602），不用 ke 缩写：zh 的 video.k 是空串，
+                // 4364 会被缩成「4.4」无单位，看起来像 4 首。歌手/P主卡的首数也是原始数字。
+                sub={t("singers.engineLine", { n: e.singers?.length ?? 0, count: fmt(e.count) })}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyBox>{t("singers.pending")}</EmptyBox>
+        )
+      ) : list.length ? (
         <div className={ENTITY_GRID_WIDE}>
           {sorted.map((g, i) => (
             <EntityCard
@@ -135,9 +163,7 @@ export default function SingersPage() {
           ))}
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed bg-card py-16 text-center text-sm text-muted-foreground sm:rounded-xl sm:py-20">
-          {t("singers.pending")}
-        </div>
+        <EmptyBox>{t("singers.pending")}</EmptyBox>
       )}
 
       {isLoading && <LoadingGrid />}

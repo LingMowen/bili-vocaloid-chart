@@ -2,6 +2,7 @@
   "title": "歌手",
   "desc": "基于本期榜单识别的歌姬实体，共 {{n}} 位",
   "descIssue": "第 {{issue}} 期（{{date}}）当期统计，共 {{n}} 位",
+  "descEngine": "全站累计，共收录 {{n}} 种合成引擎",
   "tabView": "播放",
   "tabFavorite": "收藏",
   "tabCount": "歌数",
@@ -18,7 +19,6 @@
   "tabSinger": "歌手",
   "tabProducer": "P主",
   "tabEngine": "引擎",
-  "tabUploader": "UP主",
-  "tabPending": "数据未收录，敬请期待",
+  "engineLine": "{{n}} 位歌手 · {{count}} 首",
   "noPicture": "暂无头像"
 }
