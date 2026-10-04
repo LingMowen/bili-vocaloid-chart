@@ -702,7 +702,8 @@ export default function VideoPage() {
                   <span className="text-sm text-muted-foreground">{t("video.uploader")}</span>
                 </div>
                 <div className="min-w-0 flex flex-wrap gap-3">
-                  {/* 站内 P主主页（/member/:mid）；去 B站空间的外链在页面底部「UP主」区另有一处 */}
+                  {/* 站内 P主主页（/member/:mid）。2026-10-04 起右栏「视频投稿」卡片的作者名
+                      也走这里；页面内已无指向 B站空间的作者外链（只剩「去 B站看」的视频外链）。 */}
                   <Link
                     to={v.owner?.mid ? `/member/${v.owner.mid}` : "/search"}
                     className="group flex min-w-0 items-center gap-2.5 rounded-xl border p-2 transition hover:border-amber-300 hover:bg-amber-50/50 dark:hover:border-amber-700 dark:hover:bg-amber-950/30"
@@ -1288,14 +1289,15 @@ export default function VideoPage() {
                   <h3 className="line-clamp-2 text-sm font-semibold leading-snug break-words xs:text-base">{v.title}</h3>
                   <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground xs:mt-1.5 xs:gap-2 xs:text-sm">
                     {v.owner?.mid ? (
-                      <a
-                        href={`https://space.bilibili.com/${v.owner.mid}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      // 2026-10-04：原来这里是指向 B站空间的 <a target="_blank">，
+                      // 竖屏下右栏 order-first，用户点作者名会被带去哔哩哔哩。
+                      // 改为站内 P主主页，与左栏「上传者」卡（:707）口径一致。
+                      <Link
+                        to={`/member/${v.owner.mid}`}
                         className="min-w-0 truncate font-medium text-foreground/80 transition-colors hover:text-primary hover:underline underline-offset-2"
                       >
                         {v.owner?.name}
-                      </a>
+                      </Link>
                     ) : (
                       <span className="min-w-0 truncate font-medium text-foreground/80">{v.owner?.name || v.bvid}</span>
                     )}
