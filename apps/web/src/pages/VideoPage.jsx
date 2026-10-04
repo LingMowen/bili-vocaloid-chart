@@ -18,7 +18,6 @@ import {
   Crown,
   ExternalLink,
   Flame,
-  Lock,
   MessageCircle,
   MessageSquare,
   Play,
@@ -1092,7 +1091,6 @@ export default function VideoPage() {
                     onClick={() => exportCsv(sortedRec, columns, `history-${aid}.csv`)}
                     className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground/60 sm:px-3 sm:py-1 sm:text-xs"
                   >
-                    <Lock className="h-2.5 w-2.5 sm:h-3 sm:w-3" aria-hidden="true" />
                     {t("video.exportCsv")}
                   </button>
                 </div>
@@ -1325,7 +1323,6 @@ export default function VideoPage() {
                     onClick={() => setDaOpen(true)}
                     className="flex-1 shrink-0 rounded-lg bg-muted/50 py-2 text-center text-xs font-semibold text-foreground transition hover:bg-muted xs:rounded-xl xs:py-2.5 xs:text-sm"
                   >
-                    <Lock className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
                     {t("video.historyData")}
                   </button>
                   <button
