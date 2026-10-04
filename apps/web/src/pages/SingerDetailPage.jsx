@@ -6,6 +6,7 @@ import { ArrowRight, Cpu, ExternalLink, Heart, Music, Play, ThumbsUp, Users } fr
 import { api, fmt } from "../api.js";
 import { qk } from "../queryKeys.js";
 import { EntityCard, EntityCardGrid, ENTITY_GRID_NARROW } from "../components/ui/EntityCard.jsx";
+import { enginePicture } from "../engineLogos.js";
 
 // ---- 区块标题 ----
 // 原站两种形态：
@@ -46,7 +47,9 @@ function AvatarCardGrid({ items, empty }) {
         return (
           <EntityCard
             key={entity.id ?? entity.name ?? i}
-            picture={entity.picture}
+            // 合成器走 enginePicture：官方索引对 Talk Ex / TALQu 返回 picture:null，
+            // 这里回落到本地官方素材，否则该区块同样会出现空缺。
+            picture={it.synthesizer ? enginePicture(entity) : entity.picture}
             name={entity.name ?? t("singer.unknown")}
             sub={t("singer.countSongs", { n: it.count ?? 0 })}
           />

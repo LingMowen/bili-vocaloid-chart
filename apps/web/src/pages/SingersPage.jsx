@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, fmt } from "../api.js";
 import { qk } from "../queryKeys.js";
 import { EntityCard, ENTITY_GRID_WIDE } from "../components/ui/EntityCard.jsx";
+import { enginePicture } from "../engineLogos.js";
 import { SegmentedTabs, PillTabs } from "../components/ui/Tabs.jsx";
 
 // 只有三段。**没有 UP主**：参考站的「UP主」与「P主」是同一份数据
@@ -128,13 +129,12 @@ export default function SingersPage() {
             {engines.map((e) => (
               <EntityCard
                 key={e.id ?? e.name}
-                // 引擎 logo 来自 singers.json 的 engine_meta（官方 /v3/synthesizer/list）。
-                // 官方也没图的（Talk Ex / TALQu）留空，EntityCard 自动退回占位图标。
-                picture={e.picture}
+                // 引擎 logo 优先取 singers.json 的 engine_meta（官方 /v3/synthesizer/list）；
+                // 官方没图的（Talk Ex / TALQu）由 enginePicture 回落到本地官方素材，
+                // 两边都没有才走 EntityCard 的名称首字徽标。
+                picture={enginePicture(e)}
                 name={e.name}
                 alt={e.name}
-                // 官方也没有 logo 的引擎（Talk Ex / TALQu）走名称首字母徽标兜底，
-                // 避免卡片出现「空缺」观感；有 picture 时该字段不生效。
                 fallbackText={e.name}
                 // 本站暂无引擎详情页（参考站 /synthesizer/:id），故不加跳转。
                 // 副文本给出「该引擎下收录了多少首 + 覆盖多少位歌手」。
