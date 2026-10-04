@@ -1275,8 +1275,12 @@ export default function VideoPage() {
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                   <span className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 shadow-2xl transition-transform hover:scale-110 xs:h-14 xs:w-14">
-                      <Play className="h-5 w-5 fill-primary text-primary xs:h-6 xs:w-6" aria-hidden="true" />
+                    {/* 2026-10-04：原来三角形用 fill-primary/text-primary，而深色模式下
+                        --color-primary 翻成近白（oklch 98.5%），白三角叠在 bg-white 圆底上
+                        等于隐形。这个圆底是固定的浅色播放键（B站/YouTube 惯例），
+                        所以图标必须用与主题无关的深色，不能跟着 primary 翻转。 */}
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-2xl ring-1 ring-black/10 transition-transform hover:scale-110 xs:h-14 xs:w-14">
+                      <Play className="h-5 w-5 fill-neutral-900 text-neutral-900 xs:h-6 xs:w-6" aria-hidden="true" />
                     </span>
                   </span>
                   {v.copyright === 1 && (
