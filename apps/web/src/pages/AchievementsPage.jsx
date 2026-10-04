@@ -124,12 +124,10 @@ function RankChips({ ranks, maxRank, name, board }) {
   );
 }
 
+// 单行 + 省略号（原来用 overflow-hidden + whitespace-nowrap，合作者一多就被硬裁掉、
+// 连省略号都没有，看不出还有内容）。与 RankCard 的 NoWrap 保持一致。
 function NoWrap({ children }) {
-  return (
-    <span className="block max-w-full overflow-hidden">
-      <span className="inline-block whitespace-nowrap">{children}</span>
-    </span>
-  );
+  return <span className="block max-w-full truncate">{children}</span>;
 }
 
 function ArtistPills({ song }) {

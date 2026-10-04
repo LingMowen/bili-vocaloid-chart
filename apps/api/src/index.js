@@ -974,6 +974,36 @@ app.get("/api/singers", (req, res, next) => {
   }
   return res.json({ ok: true, data: { singers } });
 });
+// 引擎（合成器）聚合榜。数据源 = singers.json 的 engines 字段。
+// 为什么需要它：/singers 与 /search 的「引擎」分类此前直接渲染「数据未收录，敬请期待」，
+// 但 singers.json 里 23 位歌手**全部**带非空 engines（去重后 13 种合成器，VOCALOID 18602 首、
+// Synthesizer V 4364 首…）—— 文案与事实不符，是用户报的「显示未收集但实际已收集」。
+app.get("/api/engines", (req, res) => {
+  const d = readCached("singers.json");
+  if (!d || !d.singers) return fail(res, 404, "singers 库尚未生成");
+  const map = new Map();
+  for (const s of Object.values(d.singers)) {
+    for (const e of s?.engines || []) {
+      if (!e || e.id == null || !e.name) continue;
+      const key = String(e.id);
+      const g = map.get(key) || { id: e.id, name: e.name, count: 0, singers: [] };
+      g.count += e.count || 0;
+      g.singers.push({
+        name: s.name,
+        id: s.vocabili_id ?? s.vocadb_id ?? null,
+        picture: s.picture ?? s.pic ?? null,
+        is_vs: Boolean(s.is_vs),
+        // 该歌手在**这个引擎**下的作品数（不是该歌手全库作品数）
+        count: e.count || 0,
+      });
+      map.set(key, g);
+    }
+  }
+  const list = [...map.values()]
+    .map((g) => ({ ...g, singers: g.singers.sort((a, b) => b.count - a.count) }))
+    .sort((a, b) => b.count - a.count);
+  return res.json({ ok: true, data: { list, generated_at: d.generated_at ?? null } });
+});
 // ---- 「随机看看」分类随机（对齐参考站 17-random.html）----
 // 返回 { kind, url, name, extra?, picture? }：前端拿到 url 直接跳转，无需二次查询。
 const RANDOM_KINDS = ["rank", "song", "producer", "singer", "engine", "up"];
@@ -1031,8 +1061,15 @@ function randomEngine() {
   }
   const it = pickOne([...map.values()]);
   if (!it) return null;
-  // 本站暂无引擎详情页（参考站 /synthesizer/:id），暂跳该引擎的搜索结果
-  return { kind: "engine", url: `/search?q=${encodeURIComponent(it.name)}`, name: it.name, extra: it.count ? `${it.count} 首` : "" };
+  // 本站暂无引擎详情页（参考站 /synthesizer/:id），跳到「搜索 → 引擎」分类并预填关键词。
+  // ⚠ 参数名必须是 keyword（SearchPage 只读 params.get("keyword")）且要带 type=engine，
+  // 旧代码写的是 `/search?q=…`（少了 keyword、也没带 type），前端收不到 → 白跳。
+  return {
+    kind: "engine",
+    url: `/search?keyword=${encodeURIComponent(it.name)}&type=engine`,
+    name: it.name,
+    extra: it.count ? `${it.count} 首` : "",
+  };
 }
 
 function randomOf(kind) {

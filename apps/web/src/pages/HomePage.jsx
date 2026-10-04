@@ -205,11 +205,12 @@ function AchieveCard() {
                       </span>
                     </div>
                     <div className="min-w-0">
-                      <span className="block max-w-full overflow-hidden text-sm font-medium leading-tight">
-                        <span className="inline-block whitespace-nowrap">{it.song?.display_name || it.song?.title}</span>
+                      {/* 单行 + 省略号（原来是 overflow-hidden + whitespace-nowrap 硬裁，没有 …） */}
+                      <span className="block max-w-full truncate text-sm font-medium leading-tight">
+                        {it.song?.display_name || it.song?.title}
                       </span>
-                      <span className="mt-0.5 block max-w-full overflow-hidden text-xs text-muted-foreground">
-                        <span className="inline-block whitespace-nowrap">{artistLine(it.song)}</span>
+                      <span className="mt-0.5 block max-w-full truncate text-xs text-muted-foreground">
+                        {artistLine(it.song)}
                       </span>
                     </div>
                     <div className="shrink-0 text-right tabular-nums">

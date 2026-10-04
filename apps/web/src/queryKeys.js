@@ -10,6 +10,7 @@ export const qk = {
   tags: () => ["tags"],
   singers: (params) => ["singers", params],
   singer: (id) => ["singer", id],
+  engines: () => ["engines"],
   stats: (params) => ["stats", params],
   random: (params) => ["random", params],
   achievements: (params) => ["achievements", params],

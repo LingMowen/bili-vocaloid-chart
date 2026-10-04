@@ -114,12 +114,11 @@ export function AchievementBadges({ item, className = "" }) {
   );
 }
 
+// 单行 + 省略号（truncate = overflow-hidden + text-overflow:ellipsis + nowrap）。
+// 旧实现是 overflow-hidden + 内层 inline-block whitespace-nowrap，超长内容被无声硬裁、没有 …，
+// 月刊这类多合作者条目尤其明显。完整内容见 /video/:aid 详情页。
 function NoWrap({ children, className = "" }) {
-  return (
-    <span className={`block max-w-full overflow-hidden ${className}`}>
-      <span className="inline-block whitespace-nowrap">{children}</span>
-    </span>
-  );
+  return <span className={`block max-w-full truncate ${className}`}>{children}</span>;
 }
 
 export function RankBadge({ rank, big }) {
@@ -188,12 +187,13 @@ export function RankRow({ item, rank, external }) {
         <RankBadge rank={rank} />
       </div>
       <div className="min-w-0">
-        <span className="block max-w-full overflow-hidden text-sm font-medium leading-tight">
-          <span className="inline-flex max-w-full items-center gap-1.5">
-            <span className="inline-block whitespace-nowrap">{item.title || item.name}</span>
-            {item.new && <NewBadge />}
-            <AchievementBadges item={item} />
-          </span>
+        {/* 标题也是单行 + 省略号：原来是 overflow-hidden + inline-flex whitespace-nowrap，
+            长标题（月刊/特刊常见）被硬裁、没有 …，与下面合作者行的截断方式不一致。
+            徽章（NEW / 成就）用 shrink-0 固定在行尾，不参与截断。 */}
+        <span className="flex min-w-0 max-w-full items-center gap-1.5 text-sm font-medium leading-tight">
+          <span className="min-w-0 truncate">{item.title || item.name}</span>
+          {item.new && <NewBadge />}
+          <AchievementBadges item={item} />
         </span>
         <NoWrap className="mt-0.5 text-xs text-muted-foreground">
           {item.owner?.name || item.author || girls[0] || t("rank.virtualSinger")}

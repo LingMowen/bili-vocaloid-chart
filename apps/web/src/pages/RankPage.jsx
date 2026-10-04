@@ -171,51 +171,44 @@ function GridCard({ item, rank, external, singerIds = {} }) {
             </div>
           </a>
           <div className="min-w-0 flex-1 space-y-1">
-            <span className="block max-w-full overflow-hidden text-blue-600 dark:text-blue-400 text-xs font-medium">
-              <span className="inline-block whitespace-nowrap">
-                <span className="shrink-0">
-                  {ownerMid ? (
-                    <Link to={`/member/${ownerMid}`} className="hover:text-primary hover:underline">
-                      {ownerName}
-                    </Link>
-                  ) : (
-                    ownerName
-                  )}
-                </span>
-              </span>
+            <span className="block max-w-full truncate text-blue-600 dark:text-blue-400 text-xs font-medium">
+              {ownerMid ? (
+                <Link to={`/member/${ownerMid}`} className="hover:text-primary hover:underline">
+                  {ownerName}
+                </Link>
+              ) : (
+                ownerName
+              )}
             </span>
             <Link to={songHref} {...ext} className="block hover:text-primary">
-              <span className="block max-w-full overflow-hidden text-sm font-bold leading-snug xs:text-base">
-                <span className="inline-block whitespace-nowrap">
-                  {item.title}
-                  <AchievementBadges item={item} className="ml-1 align-middle" />
-                </span>
+              {/* 单行 + 省略号（徽章 shrink-0 固定在行尾，不参与截断） */}
+              <span className="flex min-w-0 max-w-full items-center text-sm font-bold leading-snug xs:text-base">
+                <span className="min-w-0 truncate">{item.title}</span>
+                <AchievementBadges item={item} className="ml-1 align-middle" />
               </span>
             </Link>
             {item.title_cn && (
-              <span className="block max-w-full overflow-hidden text-xs text-muted-foreground">
-                <span className="inline-block whitespace-nowrap">{item.title_cn}</span>
-              </span>
+              <span className="block max-w-full truncate text-xs text-muted-foreground">{item.title_cn}</span>
             )}
             {girls.length > 0 && (
-              <span className="block max-w-full overflow-hidden text-pink-600 dark:text-pink-400 text-xs font-medium">
-                <span className="inline-block whitespace-nowrap">
-                  {girls.map((g, i) => {
-                    const sid = singerIds[g];
-                    return (
-                      <span key={`${g}-${i}`} className="shrink-0">
-                        {i > 0 && <span className="mx-1 text-muted-foreground/40">/</span>}
-                        {sid ? (
-                          <Link to={`/singer/${sid}`} className="hover:text-primary hover:underline">
-                            {g}
-                          </Link>
-                        ) : (
-                          g
-                        )}
-                      </span>
-                    );
-                  })}
-                </span>
+              // 合作者只占一行，超出用 … 截断（完整名单在 /video/:aid 详情页）。
+              // 之前是 overflow-hidden + whitespace-nowrap 的硬裁，多合作者会被无声切掉且无省略号。
+              <span className="block max-w-full truncate text-pink-600 dark:text-pink-400 text-xs font-medium">
+                {girls.map((g, i) => {
+                  const sid = singerIds[g];
+                  return (
+                    <span key={`${g}-${i}`}>
+                      {i > 0 && <span className="mx-1 text-muted-foreground/40">/</span>}
+                      {sid ? (
+                        <Link to={`/singer/${sid}`} className="hover:text-primary hover:underline">
+                          {g}
+                        </Link>
+                      ) : (
+                        g
+                      )}
+                    </span>
+                  );
+                })}
               </span>
             )}
           </div>
