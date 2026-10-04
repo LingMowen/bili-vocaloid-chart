@@ -573,8 +573,15 @@ async function collectAll(force = false) {
       }
       if (done % 50 === 0) {
         console.log(`[collector] 处理 ${done}/${aids.length}，收录 ${out.length}`);
-        // 中途落盘同样走合并，避免采集进程中断后磁盘只剩半套库
-        writeDisk(0, mergeToDisk(out, cached && Array.isArray(cached.data) ? cached.data : []), false);
+        // 中途落盘同样走合并，避免采集进程中断后磁盘只剩半套库。
+        // complete 取「写盘那一刻磁盘上的值」，不能硬写 false：
+        // mergeToDisk 的结果是「磁盘 ∪ 本轮已抓到」的超集，不比落盘前更不完整；
+        // 而一轮采集要跑约 90 分钟，若中途把它打回 false，任何一次重启打断周期
+        // 都会让库永久降级成 archive 兜底口径（/api/girls 少约 35%）。
+        // 按磁盘现值继承后，外部修正（如置 complete=true）也不会被中途落盘抹掉。
+        const mid = mergeToDisk(out, cached && Array.isArray(cached.data) ? cached.data : []);
+        const diskNow = readDisk();
+        writeDisk(0, mid, Boolean(diskNow && diskNow.complete === true));
       }
     }
     out.sort((a, b) => b.score - a.score);
