@@ -7,6 +7,7 @@ import { api, fmt, fmtShort } from "../api.js";
 import { qk } from "../queryKeys.js";
 import PopoverMenu from "../components/ui/Popover.jsx";
 import { EntityCard, ENTITY_GRID_WIDE } from "../components/ui/EntityCard.jsx";
+import { enginePicture } from "../engineLogos.js";
 import { SegmentedTabs } from "../components/ui/Tabs.jsx";
 
 const HISTORY_KEY = "bili-vocaloid-chart-search-history";
@@ -514,10 +515,11 @@ export default function SearchPage() {
             {engines.map((e) => (
               <EntityCard
                 key={e.id ?? e.name}
-                picture={e.picture}
+                picture={enginePicture(e)}
                 name={e.name}
                 alt={e.name}
                 nameNode={<Highlight text={e.name} keyword={keyword} />}
+                fallbackText={e.name}
                 sub={t("singers.engineLine", {
                   n: e.singers?.length ?? 0,
                   count: fmt(e.count),
