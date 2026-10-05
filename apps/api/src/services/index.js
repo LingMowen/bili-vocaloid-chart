@@ -1013,6 +1013,11 @@ const ACH_CATEGORIES = [
   { key: "regular", label: "门番", description: "30 期内有 20 期在前 20 名", maxRank: 20 },
   { key: "daily_regular", label: "日刊门番", description: "30 期内有 20 期在前 20 名", maxRank: 20 },
   { key: "daily_potential_regular", label: "日刊门番候补", description: "15 期内有 10 期在前 20 名", maxRank: 20 },
+  // 2026-10-05：新增「累计播放量」三档（用户指定）。与上面 6 类不同源 ——
+  // 它们按榜单位次判定，这三档按库内**累计播放量**判定，与是否上榜无关。
+  { key: "hall_of_fame", label: "殿堂曲", description: "累计播放量 ≥ 10 万", viewThreshold: 100000 },
+  { key: "legend", label: "传说曲", description: "累计播放量 ≥ 100 万", viewThreshold: 1000000 },
+  { key: "myth", label: "神话曲", description: "累计播放量 ≥ 1000 万", viewThreshold: 10000000 },
   // 2026-09-30：旧四类（superhit / monban / myth / annual_top）已彻底下线，
   // 前后端统一为上面这套 vocabili 定义，不再保留兼容分支。
 ];
@@ -1025,7 +1030,14 @@ const ACH_COLORS = {
   regular: "#127436",
   daily_regular: "#127436",
   daily_potential_regular: "#23AFA4",
+  // 累计播放量三档（用户指定阈值）：殿堂 10 万 / 传说 100 万 / 神话 1000 万
+  hall_of_fame: "#8B5CF6",
+  legend: "#D97706",
+  myth: "#DC2626",
 };
+
+// 累计播放量成就：判定源 = 库内 item.view（累计），与榜单位次无关，四个榜通用。
+const ACH_VIEW_CATEGORIES = ACH_CATEGORIES.filter((c) => c.viewThreshold > 0);
 
 // 计数型成就的官方窗口/所需次数（比例 2/3，缩放共用）
 const ACH_COUNT_WINDOWS = {
@@ -1296,18 +1308,68 @@ async function scanBoardAchievements(board) {
   };
 }
 
+// ---- 累计播放量成就（2026-10-05 用户指定）：殿堂曲 10 万 / 传说曲 100 万 / 神话曲 1000 万 ----
+// 与上面 6 类「榜单位次」成就不同源：判定读库内 item.view（累计播放量），不依赖是否上榜、
+// 也不依赖某期榜单，所以四个榜（含 board=all）的任意 type 查询都应包含这三类。
+// 数据量：10 万 3634 首 / 100 万 563 首 / 1000 万 26 首（20545 库实测）。
+const _achViewCache = { fp: null, data: [] };
+
+async function buildViewMilestoneAchievements(type) {
+  const items = await loadLibrary();
+  const libStat = statSafe(path.join(CACHE_DIR, "library.json"));
+  if (_achViewCache.fp === libStat && _achViewCache.data.length) {
+    return type && type !== "all" ? _achViewCache.data.filter((x) => x.category === type) : _achViewCache.data;
+  }
+  const out = [];
+  for (const c of ACH_VIEW_CATEGORIES) {
+    for (const it of items) {
+      if (!it || !it.aid) continue;
+      const v = Number(it.view) || 0;
+      if (v < c.viewThreshold) continue;
+      out.push({
+        category: c.key,
+        song_id: it.aid,
+        song: toSongItem(it),
+        ranks: {},
+        start_issue: null,
+        end_issue: null,
+        // 累计播放量是「至今」的量，没有"达成期号"；用刷新时间近似达成日期
+        achieved_issue: null,
+        achieved_date: it.lastRefreshAt
+          ? new Date(it.lastRefreshAt).toISOString().slice(0, 10)
+          : it.pubdate
+            ? new Date(it.pubdate * 1000).toISOString().slice(0, 10)
+            : null,
+        dropped_issue: null,
+        on_board_count: null,
+        total_count: null,
+        streak: null,
+        meta: { view: v, threshold: c.viewThreshold },
+      });
+    }
+  }
+  // 同一档内按播放量倒序（殿堂曲里 2900 万排在 10 万前面）
+  out.sort((a, b) => (b.meta.view || 0) - (a.meta.view || 0));
+  _achViewCache.fp = libStat;
+  _achViewCache.data = out;
+  return type && type !== "all" ? out.filter((x) => x.category === type) : out;
+}
+
 // opts: { board: 'weekly'|'daily'|'monthly'|'annual'|'all', type, status, page, pageSize }
 // board 传 "all" 时跨榜混排（对齐 vocabili 首页「成就速递」）；
-// type 传 "all"（或不传类别白名单外的值）时返回该榜全部 6 类达成项。
+// type 传 "all"（或不传类别白名单外的值）时返回该榜全部达成项（含累计播放量三档）。
 async function achievements(opts = {}) {
   const rawBoard = String(opts.board ?? "");
   const board = rawBoard === "all" ? "all" : ["daily", "weekly", "monthly", "annual"].includes(rawBoard) ? rawBoard : "weekly";
   const rawType = String(opts.type ?? "");
-  const type = rawType === "all" ? "all" : ACH_CATEGORIES.some((c) => c.key === rawType) ? rawType : "emerging_hit";
+  const type = rawType === "all" || ACH_CATEGORIES.some((c) => c.key === rawType) ? rawType : "emerging_hit";
   const page = Math.max(1, Number(opts.page) || 1);
   const pageSize = Math.max(1, Math.min(60, Number(opts.pageSize) || 20));
   const result = await buildAchievementsByBoard(board, type);
-  const total = result.items.length;
+  // 累计播放量三档与榜位无关，单独扫描后并入（同一首歌可能同时有榜位成就与播放量成就）
+  const viewItems = await buildViewMilestoneAchievements(type);
+  const items = [...result.items, ...viewItems];
+  const total = items.length;
   return {
     board,
     type,
@@ -1317,7 +1379,7 @@ async function achievements(opts = {}) {
     has_gap: result.has_gap ?? false,
     categories: ACH_CATEGORIES.map((c) => ({ ...c, color: ACH_COLORS[c.key] || undefined })),
     total,
-    data: result.items.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
+    data: items.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
   };
 }
 

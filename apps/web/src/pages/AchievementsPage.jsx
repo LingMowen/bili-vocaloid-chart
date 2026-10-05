@@ -22,6 +22,11 @@ const CATEGORIES = [
   { key: "mega_hit", label: "achievements.cat.mega_hit.label", description: "achievements.cat.mega_hit.desc", maxRank: 3 },
   { key: "potential_regular", label: "achievements.cat.potential_regular.label", description: "achievements.cat.potential_regular.desc", maxRank: 20 },
   { key: "regular", label: "achievements.cat.regular.label", description: "achievements.cat.regular.desc", maxRank: 20 },
+  // 2026-10-05：累计播放量三档（用户指定）。判定源是库内累计播放量，
+  // 与榜位无关 —— 故不渲染 ranks/期号，只显示播放量。
+  { key: "hall_of_fame", label: "achievements.cat.hall_of_fame.label", description: "achievements.cat.hall_of_fame.desc", viewThreshold: 100000 },
+  { key: "legend", label: "achievements.cat.legend.label", description: "achievements.cat.legend.desc", viewThreshold: 1000000 },
+  { key: "myth", label: "achievements.cat.myth.label", description: "achievements.cat.myth.desc", viewThreshold: 10000000 },
 ];
 
 // 判定所需的最少历史期数：连续型按 streak 长度，门番系按官方窗口。
@@ -40,7 +45,14 @@ const COLORS = {
   regular: "#127436",
   daily_regular: "#127436",
   daily_potential_regular: "#23AFA4",
+  hall_of_fame: "#8B5CF6",
+  legend: "#D97706",
+  myth: "#DC2626",
 };
+
+/** 累计播放量三档（不依赖榜位） */
+const VIEW_CATEGORIES = CATEGORIES.filter((c) => c.viewThreshold > 0);
+const isViewType = (k) => VIEW_CATEGORIES.some((c) => c.key === k);
 
 const PAGE_SIZE = 20;
 const CHIP_LIMIT = 20;
@@ -201,6 +213,47 @@ function WeekCard({ item, index, type, board }) {
   const { t } = useTranslation();
   const color = COLORS[type];
   const name = item.song?.display_name || item.song?.title || t("achievements.unknown");
+  // 累计播放量三档：没有 ranks / 期号，改显示播放量与门槛
+  if (isViewType(type)) {
+    const view = Number(item.meta?.view) || 0;
+    const threshold = Number(item.meta?.threshold) || 0;
+    return (
+      <article className="group overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
+        <div className="relative aspect-video overflow-hidden bg-muted">
+          <Thumbnail item={item} />
+          <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/60 via-black/5 to-transparent" />
+          <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/50 px-2 py-1 text-sm font-bold text-white">
+            #{index + 1}
+          </div>
+        </div>
+        <div className="p-3 xs:p-4">
+          <Link to={`/video/${item.song_id}`} className="block hover:text-primary">
+            <NoWrap>
+              <span className="text-sm font-bold leading-snug xs:text-base">{name}</span>
+            </NoWrap>
+          </Link>
+          <ArtistPills song={item.song} />
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            <span>
+              {t("achievements.totalView")}&nbsp;
+              <span className="font-bold tabular-nums" style={{ color }}>
+                {view.toLocaleString()}
+              </span>
+            </span>
+            {threshold > 0 && (
+              <>
+                <span className="text-muted-foreground/30">·</span>
+                <span>
+                  {t("achievements.threshold")}&nbsp;
+                  <span className="font-semibold tabular-nums">{threshold.toLocaleString()}</span>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </article>
+    );
+  }
   return (
     <article className="group overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
       <div className="relative aspect-video overflow-hidden bg-muted">
@@ -423,6 +476,8 @@ function WeeklyBoard() {
         (() => {
           const periods = data?.periods_available ?? null;
           const need = MIN_PERIODS[type];
+          // 累计播放量三档不看历史期数，不需要「数据不足」提示
+          if (isViewType(type)) return <EmptyBox icon={<TrophyIcon className="h-10 w-10" />} text={t("achievements.emptyWeekly")} />;
           // 「连续型」成就要求期数连续；本站历史期数不足或存在断档时，再等多久也不会有结果，
           // 必须明确告知，否则用户只会看到一片空白。
           const continuous = type === "emerging_hit" || type === "mega_hit";

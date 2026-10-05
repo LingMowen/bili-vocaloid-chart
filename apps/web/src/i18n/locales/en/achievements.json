@@ -9,7 +9,10 @@
     "potential_regular": { "label": "Gatekeeper candidate", "desc": "10 of the last 15 issues in the top 20" },
     "regular": { "label": "Gatekeeper", "desc": "20 of the last 30 issues in the top 20" },
     "daily_regular": { "label": "Daily gatekeeper", "desc": "20 of the last 30 issues in the top 20" },
-    "daily_potential_regular": { "label": "Daily gatekeeper candidate", "desc": "10 of the last 15 issues in the top 20" }
+    "daily_potential_regular": { "label": "Daily gatekeeper candidate", "desc": "10 of the last 15 issues in the top 20" },
+    "hall_of_fame": { "label": "Hall of Fame", "desc": "100,000+ total views" },
+    "legend": { "label": "Legend", "desc": "1,000,000+ total views" },
+    "myth": { "label": "Myth", "desc": "10,000,000+ total views" }
   },
   "dailyRegularTitle": "Current gatekeepers",
   "dailyCandidateTitle": "Current gatekeeper candidates",
@@ -24,6 +27,8 @@
   "viewAll": "+{{n}} view all",
   "toNow": "to date",
   "totalSongs": "{{total}} songs",
+  "totalView": "Total views",
+  "threshold": "Threshold",
   "emptyWeekly": "No achievements yet",
   "insufficientPeriods": "Only {{n}} issues of history available (at least {{need}} needed)",
   "gappedPeriods": "History has {{n}} issues with gaps — {{need}} consecutive issues can't form until the gap is filled",
