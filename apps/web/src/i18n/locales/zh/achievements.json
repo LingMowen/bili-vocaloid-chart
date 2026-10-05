@@ -9,7 +9,10 @@
     "potential_regular": { "label": "门番候补", "desc": "15 期内有 10 期在前 20 名" },
     "regular": { "label": "门番", "desc": "30 期内有 20 期在前 20 名" },
     "daily_regular": { "label": "日刊门番", "desc": "30 期内有 20 期在前 20 名" },
-    "daily_potential_regular": { "label": "日刊门番候补", "desc": "15 期内有 10 期在前 20 名" }
+    "daily_potential_regular": { "label": "日刊门番候补", "desc": "15 期内有 10 期在前 20 名" },
+    "hall_of_fame": { "label": "殿堂曲", "desc": "累计播放量 ≥ 10 万" },
+    "legend": { "label": "传说曲", "desc": "累计播放量 ≥ 100 万" },
+    "myth": { "label": "神话曲", "desc": "累计播放量 ≥ 1000 万" }
   },
   "dailyRegularTitle": "当前门番",
   "dailyCandidateTitle": "当前门番候补",
@@ -24,6 +27,8 @@
   "viewAll": "+{{n}} 查看全部",
   "toNow": "至今",
   "totalSongs": "共 {{total}} 首",
+  "totalView": "累计播放量",
+  "threshold": "门槛",
   "emptyWeekly": "暂无达成记录",
   "insufficientPeriods": "本站该榜历史仅 {{n}} 期，不足以判定（需至少 {{need}} 期）",
   "gappedPeriods": "本站该榜历史共 {{n}} 期且中间有断档，无法形成连续 {{need}} 期记录（需补齐历史后才会出现）",

@@ -105,8 +105,42 @@ evo_periods, evo_start, evo_end, avg_days`
 | `GET` | `/api/stats` | 站点总体统计（库存、歌姬数等） |
 | `GET` | `/api/tags` | 标签聚合 |
 | `GET` | `/api/today` | 今日概览 |
-| `GET` | `/api/achievements` | 成就定义与达成 |
+| `GET` | `/api/achievements` | 成就定义与达成（详见 §5.1） |
 | `GET` | `/api/evostats` | eVocalRank 同步统计（期数、覆盖） |
+
+### 5.1 `/api/achievements` 成就
+
+**参数**
+
+| 参数 | 取值 | 默认 | 说明 |
+|---|---|---|---|
+| `board` | `daily` \| `weekly` \| `monthly` \| `annual` \| `all` | `weekly` | 榜单维度；`all` 跨榜混排 |
+| `type` | 见下方 9 类 `key`，或 `all` | `emerging_hit` | 成就类别 |
+| `status` | `active` | `active` | 保留字段 |
+| `page` | 1 起 | `1` | 页码 |
+| `page_size` | 1–60 | `20` | 每页条数 |
+
+**九类成就**
+
+| `key` | 名称 | 判定 | 数据源 |
+|---|---|---|---|
+| `emerging_hit` | Emerging Hit! | 连续 3 期主榜前 5 | 榜单位次 |
+| `mega_hit` | Mega Hit!!! | 连续 5 期主榜前 3 | 榜单位次 |
+| `potential_regular` | 门番候补 | 15 期内有 10 期前 20 | 榜单位次 |
+| `regular` | 门番 | 30 期内有 20 期前 20 | 榜单位次 |
+| `daily_regular` | 日刊门番 | 30 期内有 20 期前 20 | 榜单位次（日刊） |
+| `daily_potential_regular` | 日刊门番候补 | 15 期内有 10 期前 20 | 榜单位次（日刊） |
+| `hall_of_fame` | 殿堂曲 | 累计播放量 ≥ 100,000 | **库内 `item.view`（与榜位无关）** |
+| `legend` | 传说曲 | 累计播放量 ≥ 1,000,000 | 同上 |
+| `myth` | 神话曲 | 累计播放量 ≥ 10,000,000 | 同上 |
+
+> 后三类不看榜位、不看历史期数，四个 `board` 取值下结果相同；20545 库实测 **3636 / 563 / 26** 首。
+
+**响应要点**
+
+- `data.categories[]`：九类定义，含 `key` / `label` / `description` / `color`，播放量三类额外含 `viewThreshold`。
+- 播放量类条目：`meta = { view, threshold }`，`ranks` 为空对象，`start_issue` / `end_issue` / `achieved_issue` 为 `null`（累计量无「达成期号」），`achieved_date` 取最近刷新日期。
+- `periods_available` / `has_gap` 仅对榜位类有意义。
 
 ---
 
