@@ -1339,15 +1339,16 @@ function computeViewAchievedDates() {
   const lastDate = dates[dates.length - 1];
   // 小门槛先填：view 过百万时殿堂曲必然也达成，一次遍历即可同时点亮多档
   const cats = [...ACH_VIEW_CATEGORIES].sort((a, b) => a.viewThreshold - b.viewThreshold);
-  const map = new Map(); // aid -> { [catKey]: { date, precision } }
+  const map = new Map(); // aid(String) -> { [catKey]: { date, precision } }
+  const lastSeen = new Map(); // aid(String) -> { view }：上一期快照里它的播放量
   for (const date of dates) {
     const snap = statHistory.snapshotAt(date);
     if (!snap) continue;
-    const isFirst = date === firstDate;
     for (const aid of Object.keys(snap)) {
       const cell = snap[aid];
       const v = Number(cell && cell.view) || 0;
       if (v <= 0) continue;
+      const prevSnap = lastSeen.get(aid);
       let rec = map.get(aid);
       if (!rec) {
         rec = {};
@@ -1355,8 +1356,15 @@ function computeViewAchievedDates() {
       }
       for (const c of cats) {
         if (rec[c.key]) continue;
-        if (v >= c.viewThreshold) rec[c.key] = { date, precision: isFirst ? "before" : "exact" };
+        if (v < c.viewThreshold) continue;
+        // 只有「上一期快照里它就在、且当时还没达标」才能证明是这两期之间跨线的 = exact。
+        // 首期就出现、或上一期数据缺失的，只能说「至迟该日已达成」= before，不能假装精确。
+        rec[c.key] = {
+          date,
+          precision: prevSnap && prevSnap.view < c.viewThreshold ? "exact" : "before",
+        };
       }
+      lastSeen.set(aid, { view: v });
     }
   }
   // 叠加历史榜单累加上界：把「快照起点」这个粗上界替换成更早的硬上界
@@ -1366,17 +1374,21 @@ function computeViewAchievedDates() {
   } catch (e) {
     upperMap = new Map();
   }
-  for (const [aid, rec] of upperMap) {
+  for (const [aidRaw, rec] of upperMap) {
+    // 键必须统一成字符串：快照 map 的键来自 Object.keys()（字符串），
+    // 而 upperMap 的 aid 是 number。若这里用 number 键回写，会多出一条与快照记录
+    // 并存的「孤儿记录」，查询时 Map.get(Number) 命中它并短路，导致三档里缺的那档
+    // 被误判成 after（实测 7 首神话曲全部被错标）。
+    const aid = String(aidRaw);
     for (const c of ACH_VIEW_CATEGORIES) {
       const hit = rec && rec[c.key];
       if (!hit || !hit.ts) continue;
       const date = dayKeyOf(hit.ts);
-      const cur = map.get(aid);
-      const prev = cur && cur[c.key];
+      const merged = map.get(aid) || {};
+      const prev = merged[c.key];
       // 已有 exact 就别动；否则取更早的那个上界
       if (prev && prev.precision === "exact") continue;
       if (prev && prev.date <= date) continue;
-      const merged = cur || {};
       merged[c.key] = { date, precision: "before", basis: "chart-accum", cum: hit.cum };
       map.set(aid, merged);
     }
@@ -1399,7 +1411,9 @@ async function buildViewMilestoneAchievements(type) {
       if (!it || !it.aid) continue;
       const v = Number(it.view) || 0;
       if (v < c.viewThreshold) continue;
-      const hit = (achvMap.get(Number(it.aid)) || achvMap.get(String(it.aid)) || {})[c.key];
+      // map 的键统一是字符串（快照 Object.keys() 与 upperMap 都已 String 化），
+      // 这里只按 String 查；写成 Map.get(Number(aid)) 会因为 number/string 不相等而 miss。
+      const hit = (achvMap.get(String(it.aid)) || {})[c.key];
       // 快照里查不到 = 该 aid 在所有快照日都未达标（新入库或刚跨线）→ after
       const achieved = hit || { date: snapLastDate, precision: "after" };
       out.push({

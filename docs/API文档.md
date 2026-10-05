@@ -155,7 +155,11 @@ evo_periods, evo_start, evo_end, avg_days`
   | `stat_daily` | 站内每日快照（`cache/stat_daily`，约 44 天） |
   | `chart-accum` | eVocalRank / biliran 周榜播放增量累加到该日时已越线。榜单只记录上榜周，所以累加值是真实累计的**下界**；下界达标即为事实，故该日期可靠（比快照上界早数年） |
 
-  优先级：`exact`（快照精确日） > `chart-accum` 上界 > 快照最早日。实测可定上界的数量：殿堂曲 1119/3636、传说曲 124/563、神话曲 6/26；其余受数据源覆盖限制（未上过榜 / 无历史快照），标注如实保留。
+  优先级：`exact`（快照内跨线日） > `chart-accum` 上界 > 快照首现日。**判定规则**：只有「上一期快照里该 aid 就在、且当时尚未达标」才给 `exact`；首期即出现、或上一期无该 aid 数据，一律给 `before`（只能说「至迟该日已达成」），不把「首次被观测到」当成「首次达成」。
+
+  实测（`type=myth` 26 首）：`exact` 2 首、`before/chart-accum` 5 首、`before/stat_daily` 19 首。其中《人是猫》BV1Bfjq6LEDi 首次被观测到破千万的日期为 **2026-10-04**（10-03 快照 9,948,877 → 10-04 快照 10,070,281），与人工核实一致。
+
+  ⚠️ 已确认的取值陷阱：`viewTimeline` 的 aid 键是 number，快照 `Object.keys()` 的键是 string。若叠加时用 number 键 `Map.set`，会多出一条与快照记录并存的孤儿记录，查询 `Map.get(Number(aid))` 命中它并短路，导致「三档里榜单没覆盖的那一档」被误判成 `after`。叠加与查询两侧都必须统一 `String(aid)`。
 - `periods_available` / `has_gap` 仅对榜位类有意义。
 
 ---
