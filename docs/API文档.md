@@ -139,7 +139,14 @@ evo_periods, evo_start, evo_end, avg_days`
 **响应要点**
 
 - `data.categories[]`：九类定义，含 `key` / `label` / `description` / `color`，播放量三类额外含 `viewThreshold`。
-- 播放量类条目：`meta = { view, threshold }`，`ranks` 为空对象，`start_issue` / `end_issue` / `achieved_issue` 为 `null`（累计量无「达成期号」），`achieved_date` 取最近刷新日期。
+- 播放量类条目：`meta = { view, threshold }`，`ranks` 为空对象，`start_issue` / `end_issue` / `achieved_issue` 为 `null`。
+- **达成时间**由 `stat_daily` 逐日快照回溯（播放量首次跨过门槛的那一天），快照粒度为天且只覆盖最近一段，因此用 `achieved_precision` 标明精度，不要当成精确值：
+
+  | 值 | 含义 | 显示 |
+  |---|---|---|
+  | `exact` | 某日快照首次达标 | `2026-09-27 达成` |
+  | `before` | 最早一期快照就已达标 | `2026-08-13 之前已达成` |
+  | `after` | 快照期内未出现达标日（新入库/刚跨线） | `2026-10-05 之后达成` |
 - `periods_available` / `has_gap` 仅对榜位类有意义。
 
 ---
