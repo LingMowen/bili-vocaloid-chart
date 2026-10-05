@@ -1,6 +1,7 @@
 const collector = require("../collector");
 const statHistory = require("../statHistory");
 const evoStats = require("../evoStats");
+const viewTimeline = require("../viewTimeline");
 const biliranSync = require("../biliranSync");
 const boardIndex = require("../boardIndex");
 const { canonicalGirl, canonicalGirls } = require("../girls");
@@ -1315,11 +1316,15 @@ async function scanBoardAchievements(board) {
 const _achViewCache = { fp: null, data: [] };
 
 // 从 stat_daily 逐日快照回溯「累计播放量首次跨过各档门槛」的日期。
-// 快照粒度是天，且只覆盖最近约 44 天，所以只能给出三种精度，必须如实标注，不能假装是精确值：
+// 快照粒度为天且只覆盖最近一段，所以只能给出三种精度，必须如实标注，不能假装是精确值：
 //   exact  —— 某日快照首次达到门槛，达成于该日（真实落在前一快照日之后、该日之内）
-//   before —— 最早一期快照就已达标，说明达成于该日之前（快照起点之前的老歌都落这里）
+//   before —— 只能确定「早于某日」（含下面的历史榜单累加上界），显示为「YYYY-MM-DD 之前已达成」
 //   after  —— 最新一期快照仍未达标，说明达成于最新快照日之后（近期才跨线的歌落这里）
 // 缓存指纹 = library 指纹 + 快照目录（期数与最新日期），任一变化即重算。
+//
+// 快照只有 40 多天，老歌在快照之前就达标了，只能给出 2026-08-13 这种没信息量的上界。
+// 所以再叠一层 viewTimeline 的历史榜单累加上界：evo/biliran 的周榜增量累加到某期就跨过门槛，
+// 说明「最迟在那期之前已达标」，比快照上界早好几年。累加值是下界，所以这个结论是硬的。
 const _achAchvCache = { fp: null, map: null };
 
 function computeViewAchievedDates() {
@@ -1354,6 +1359,28 @@ function computeViewAchievedDates() {
       }
     }
   }
+  // 叠加历史榜单累加上界：把「快照起点」这个粗上界替换成更早的硬上界
+  let upperMap = new Map();
+  try {
+    upperMap = viewTimeline.buildViewUpperBounds();
+  } catch (e) {
+    upperMap = new Map();
+  }
+  for (const [aid, rec] of upperMap) {
+    for (const c of ACH_VIEW_CATEGORIES) {
+      const hit = rec && rec[c.key];
+      if (!hit || !hit.ts) continue;
+      const date = dayKeyOf(hit.ts);
+      const cur = map.get(aid);
+      const prev = cur && cur[c.key];
+      // 已有 exact 就别动；否则取更早的那个上界
+      if (prev && prev.precision === "exact") continue;
+      if (prev && prev.date <= date) continue;
+      const merged = cur || {};
+      merged[c.key] = { date, precision: "before", basis: "chart-accum", cum: hit.cum };
+      map.set(aid, merged);
+    }
+  }
   _achAchvCache.fp = fp;
   _achAchvCache.map = map;
   return { map, firstDate, lastDate };
@@ -1382,10 +1409,11 @@ async function buildViewMilestoneAchievements(type) {
         ranks: {},
         start_issue: null,
         end_issue: null,
-        // 累计播放量是「至今」的量，没有"达成期号"；达成日期由 stat_daily 快照回溯得出
+        // 累计播放量是「至今」的量，没有"达成期号"；达成日期由 stat_daily 快照 + 历史榜单累加回溯得出
         achieved_issue: null,
         achieved_date: achieved.date,
         achieved_precision: achieved.precision,
+        achieved_basis: achieved.basis || "stat_daily",
         dropped_issue: null,
         on_board_count: null,
         total_count: null,
