@@ -127,10 +127,14 @@
       <div class="controls">
         <button id="btnIncremental" class="primary">增量补齐</button>
         <button id="btnFull">全量刷新</button>
+        <button id="btnRefresh">数据刷新（增量）</button>
+        <button id="btnRefreshFull">数据刷新（全量）</button>
         <button id="btnClear">清空日志</button>
       </div>
       <div style="color: var(--muted); font-size: 12px; margin-top: 10px;">
         增量补齐：仅补齐新候选，不动现有 AI 缓存。全量刷新：拉取全部候选并重新审核（耗 AI 配额）。
+        <strong>数据刷新（增量）</strong>：只刷新库内已有条目的播放/点赞等数据并重新统分，不新增收录（每 5 分钟自动执行一次，此按钮可手动提前触发）。
+        <strong>数据刷新（全量）</strong>：把库内全部条目完整刷一遍（时间预算放宽到 30 分钟），同样不新增收录。
       </div>
     </div>
 
@@ -167,6 +171,26 @@
           <div class="stat"><div class="label">待分析</div><div class="value value-md" id="rvRelPending">0</div></div>
           <div class="stat"><div class="label">已识别</div><div class="value value-md success" id="rvRelHit">0</div></div>
         </div>
+      </div>
+    </div>
+
+    <div class="card" id="refreshCard" style="display:none;">
+      <h2>数据刷新 <span style="font-weight:normal;text-transform:none;color:var(--muted);font-size:11px;">(每 5 分钟自动一轮，只刷库内已有条目的 stat 并重新统分，不新增收录)</span></h2>
+      <div class="stats">
+        <div class="stat"><div class="label">状态</div><div class="value value-md" id="rfStatus">待机</div></div>
+        <div class="stat"><div class="label">本轮目标</div><div class="value value-md" id="rfTargets">0</div></div>
+        <div class="stat"><div class="label">已完成</div><div class="value value-md" id="rfDone">0</div></div>
+        <div class="stat"><div class="label">失败</div><div class="value value-md danger" id="rfErrors">0</div></div>
+        <div class="stat"><div class="label">库存</div><div class="value value-md" id="rfTotal">0</div></div>
+        <div class="stat"><div class="label">最近快照</div><div class="value value-md" id="rfSnapshot">—</div></div>
+        <div class="stat"><div class="label">本轮耗时</div><div class="value value-md" id="rfMs">—</div></div>
+      </div>
+      <div class="stage" style="margin-top:12px;">
+        <div class="stage-head">
+          <span class="stage-label">刷新进度</span>
+          <span class="stage-meta" id="rfPct">0%</span>
+        </div>
+        <div class="bar" id="rfBar"><div style="width:0%"></div></div>
       </div>
     </div>
 
@@ -378,6 +402,7 @@
     renderStats(currentCycle?.stats || {});
     renderHistory(snap.history, snap.cycles);
     applyReview(snap.review);
+    applyRefresh(snap.refresh);
   }
 
   function applyCycleStart(cycle) {
@@ -426,6 +451,30 @@
     document.getElementById("rvRelHit").textContent = r.aiRelatedEnriched ?? 0;
   }
 
+  // ---- 数据刷新状态卡 ----
+  const refreshCard = document.getElementById("refreshCard");
+  let rfLastUpdate = 0; // 3s 轮询与 SSE 去抖：1s 内的重复渲染跳过
+  function applyRefresh(r) {
+    if (!r) { refreshCard.style.display = "none"; return; }
+    refreshCard.style.display = "";
+    const status = document.getElementById("rfStatus");
+    status.textContent = r.running ? "刷新中" : (r.endedAt ? "已完成" : "待机");
+    status.className = "value value-md" + (r.running ? " success" : "");
+    document.getElementById("rfTargets").textContent = r.targets ?? 0;
+    document.getElementById("rfDone").textContent = r.done ?? 0;
+    document.getElementById("rfErrors").textContent = r.errors ?? 0;
+    document.getElementById("rfTotal").textContent = r.total ?? 0;
+    document.getElementById("rfSnapshot").textContent = r.snapshot || "—";
+    document.getElementById("rfMs").textContent = r.ms ? fmtDur(r.ms) : "—";
+    const done = r.done ?? 0, targets = r.targets ?? 0;
+    const pct = targets > 0 ? Math.min(100, Math.round(done / targets * 100)) : 0;
+    document.getElementById("rfPct").textContent = pct + "%";
+    const bar = document.getElementById("rfBar");
+    bar.className = "bar" + (!r.running && (r.endedAt || done >= targets) && targets > 0 ? " done" : "");
+    bar.firstElementChild.style.width = pct + "%";
+    rfLastUpdate = Date.now();
+  }
+
   let es;
   function connect() {
     if (es) es.close();
@@ -437,6 +486,7 @@
     es.addEventListener("cycle:end", (e) => applyCycleEnd(JSON.parse(e.data)));
     es.addEventListener("stage:update", (e) => applyStageUpdate(JSON.parse(e.data)));
     es.addEventListener("review:update", (e) => applyReview(JSON.parse(e.data)));
+    es.addEventListener("refresh:update", (e) => applyRefresh(JSON.parse(e.data)));
     es.onerror = () => {
       dot.className = "status-dot err";
       setTimeout(connect, 2000);
@@ -472,6 +522,35 @@
   btnIncremental.onclick = () => trigger(false);
   btnFull.onclick = () => trigger(true);
 
+  // ---- 数据刷新手动触发 ----
+  async function triggerRefresh(full) {
+    const btn = full ? btnRefreshFull : btnRefresh;
+    btn.disabled = true;
+    try {
+      const r = await fetch(API + "/api/refresh/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ full }),
+      });
+      const j = await r.json();
+      if (r.status === 409) {
+        toast("数据刷新进行中，请等待本轮完成", "error");
+      } else if (!j.ok) {
+        toast("触发失败：" + (j.message || r.status), "error");
+      } else {
+        toast(full ? "已触发全量数据刷新（预算 30 分钟）" : "已触发数据刷新", "success");
+      }
+    } catch (e) {
+      toast("请求失败：" + e.message, "error");
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 1500);
+    }
+  }
+  const btnRefresh = document.getElementById("btnRefresh");
+  const btnRefreshFull = document.getElementById("btnRefreshFull");
+  btnRefresh.onclick = () => triggerRefresh(false);
+  btnRefreshFull.onclick = () => triggerRefresh(true);
+
   document.getElementById("btnClear").onclick = () => {
     logRows.length = 0;
     logEl.innerHTML = `<div class="empty" style="padding: 16px;">已清空</div>`;
@@ -482,6 +561,8 @@
       if (j.ok) {
         if (!currentCycle || currentCycle.endedAt) renderHistory(j.data.history, j.data.cycles);
         renderStats(j.data.current?.stats || currentCycle?.stats || {});
+        // 数据刷新卡：SSE 断线兜底（1s 内已有 SSE 更新则跳过，避免抖动）
+        if (j.data.refresh && Date.now() - rfLastUpdate > 1000) applyRefresh(j.data.refresh);
       }
     }).catch(() => {});
   }, 3000);

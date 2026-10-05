@@ -67,6 +67,7 @@ export const METRICS = [
  *  注：键名沿用原站语义，但本项目 i18n 的 nsSeparator 是 "."、keySeparator 为 false，
  *  所以键内不能再出现 "."，这里一律拍平（原站是 boards.vocaloid-daily 这类嵌套键）。 */
 export const BOARDS = [
+  { value: "new", labelKey: "calculator.boardNew" },
   { value: "vocaloid-daily", labelKey: "calculator.boardVocaloidDaily" },
   { value: "vocaloid-weekly", labelKey: "calculator.boardVocaloidWeekly" },
   { value: "vocaloid-monthly", labelKey: "calculator.boardVocaloidMonthly" },
@@ -298,6 +299,63 @@ function catWeeklyScore(counts) {
   };
 }
 
+// ---------- 新计分公式（2026-10-05 切换，与后端 apps/api/src/score.js 对齐） ----------
+// 单日总分 = log₂(ΔV+100) × S_互动 × T_时间 × Fix（去语种）
+// ΔV=view、ΔL=like、ΔB=coin、ΔF=favorite、ΔC=danmaku、ΔD=reply；share 不参与计分。
+
+/** 互动分 S_互动（分母 +200 平滑，避免小播放虚高） */
+export function sInteract(d) {
+  const n = d || {};
+  const v = num(n.view), l = num(n.like), b = num(n.coin), f = num(n.favorite), c = num(n.danmaku), r = num(n.reply);
+  return ((l + 3 * b + 4 * f + 2 * c + r) / (v + 200)) * 1000;
+}
+
+/** 时间系数 T（t=发布至今天数，向下取整；缺 pubdate 用 14 → T=1.0） */
+export function timeFactor(t) {
+  const tt = Math.max(0, Math.floor(Number(t) || 0));
+  if (tt <= 4) return 1.6 - 0.15 * tt;
+  if (tt <= 14) return 1.0;
+  return 21 / (tt + 7);
+}
+
+/** 修正系数 Fix（avgS=当日全库有增量条目的 S 均值；缺失/为 0 时返回 1.0） */
+export function fixFactor(s, avgS) {
+  const avg = Number(avgS);
+  if (!(avg > 0)) return 1.0;
+  if (s < 0.2 * avg) return 0.3;
+  if (s > 5 * avg) return (5 * avg) / s;
+  return 1.0;
+}
+
+/** 单日总分（d=当日增量 stat；t=发布至今天数；avgS=当日全库均值，可选） */
+export function dailyScore(d, t, avgS) {
+  const v = num((d || {}).view);
+  const s = sInteract(d);
+  return Math.round(Math.log2(v + 100) * s * timeFactor(t) * fixFactor(s, avgS));
+}
+
+/** 新公式计算器明细（供 CalculatorPage board="new" 用） */
+export function newScoreDetail(counts, t, avgS) {
+  const n = counts || {};
+  const s = sInteract(n);
+  const tt = Math.max(0, Math.floor(Number(t) || 0));
+  const tf = timeFactor(tt);
+  const fix = fixFactor(s, avgS);
+  const total = Math.round(Math.log2(num(n.view) + 100) * s * tf * fix);
+  return {
+    counts: n,
+    ratios: { view: 0, favorite: 0, coin: 0, like: 0, danmaku: 0, reply: 0, share: 0 },
+    fixes: { a: 1, b: 1, c: 1, d: 1, e: 1, fix_total: fix },
+    points: {
+      view: 0, favorite: 0, coin: 0, like: 0, danmaku: 0, reply: 0, share: 0,
+      basis: Math.round(Math.log2(num(n.view) + 100) * s * tf),
+      total,
+    },
+    // 附加明细（ScoreDisplay 不渲染，自定义展示用）
+    detail: { s, t: tt, timeFactor: tf, fix, avgS: avgS ?? null },
+  };
+}
+
 // ---------- 调度（原站 xz / a4） ----------
 
 /**
@@ -307,7 +365,8 @@ function catWeeklyScore(counts) {
  * @returns {{counts:object, ratios:object, fixes:object, points:object}}
  */
 export function computeScore(counts, opts = {}) {
-  const { board, copyright = 1, issue = 1, timeOffset = -1 } = opts;
+  const { board, copyright = 1, issue = 1, timeOffset = -1, t, avgS } = opts;
+  if (board === "new") return newScoreDetail(counts, t ?? 1, avgS);
   if (board === "biliboard") return biliboardScore(counts, timeOffset);
   if (board === "special") return scoreCalc(counts, copyright, { name: "special" });
   if (HAS_ISSUE.has(board)) return scoreCalc(counts, copyright, { name: board });

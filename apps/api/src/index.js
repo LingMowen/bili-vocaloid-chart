@@ -15,6 +15,8 @@ const related = require("./related");
 const evoStats = require("./evoStats");
 const evocalrank = require("./evocalrank");
 const boardIndex = require("./boardIndex");
+const refreshStats = require("./refreshStats");
+const { beijingClock, beijingHour, beijingParts, BEIJING_OFFSET_MS } = require("./beijingTime");
 const { makeRouter: makeAuthRouter, requireAuth, publicUser } = require("./auth");
 const { db, stmts } = require("./db");
 
@@ -583,6 +585,17 @@ let refreshing = false;
 let lastRefresh = 0;
 let libraryRefreshing = false;
 let lastLibraryRefresh = 0;
+// 以磁盘库的采集时间作为「上次刷新」基线：库完整时新进程不再无条件踢一次全量采集
+// （旧实现初值恒为 0，导致每次重启都在启动后 1.5s 触发 collectAll）；库缺失/不完整
+// 时基线保持 0，启动后的第一次调度会立即补采集。
+try {
+  const diskLib = collector.readDisk();
+  if (diskLib && diskLib.complete === true && Array.isArray(diskLib.data) && diskLib.data.length) {
+    lastLibraryRefresh = diskLib.ts || 0;
+  }
+} catch (e) {
+  /* 读盘失败按 0 处理，下次调度会补采集 */
+}
 
 async function refreshBoards() {
   if (refreshing) return;
@@ -668,14 +681,16 @@ async function syncVocabili() {
   }
 }
 
-// 每天定点（hour:00）执行一次 fn，之后每 24h 循环。用于 vocabili 日刊：
+// 每天定点（北京时间 hour:00）执行一次 fn，之后每 24h 循环。用于 vocabili 日刊：
 // 日刊站点凌晨 3 点更新，4 点抓取确保拿到新一期，避免抓到未更新的旧数据。
+// 时间基准为北京时间（显式 +8 偏移），不依赖进程本地时区。
 function scheduleDailyAt(hour, fn) {
-  const now = new Date();
-  const next = new Date(now);
-  next.setHours(hour, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  const delay = next - now;
+  const now = Date.now();
+  const p = beijingParts(now); // {y,m,d,h,min,sec,week}
+  // 今天的北京时间 hour:00 对应的 UTC 时间戳
+  let target = Date.UTC(p.y, p.m - 1, p.d, hour, 0, 0) - BEIJING_OFFSET_MS;
+  if (target <= now) target += 24 * 3600 * 1000;
+  const delay = target - now;
   setTimeout(() => {
     try {
       fn();
@@ -684,7 +699,7 @@ function scheduleDailyAt(hour, fn) {
     }
     setInterval(fn, 24 * 3600 * 1000);
   }, delay);
-  console.log(`[schedule] ${fn.name || "task"} 排程每天 ${hour}:00 执行（首跑延迟 ${Math.round(delay / 1000)}s）`);
+  console.log(`[schedule] ${fn.name || "task"} 排程每天北京时间 ${hour}:00 执行（首跑延迟 ${Math.round(delay / 1000)}s）`);
 }
 
 // 全库派生数据（evostats/tags/girls/stats）低频后台刷新，失败保留旧缓存
@@ -723,6 +738,42 @@ async function refreshLibrary() {
   }
 }
 
+// ---- 调度改造（m10418）----
+// 每 5 分钟：数据刷新 + 统分。只刷库内已有条目的 stat/score（refreshStats 内部按
+// lastRefreshAt 升序挑最久未刷新的一批，多轮滚动覆盖全库），绝不新增收录；
+// 刷新后补写当日 stat_daily 快照，榜单增量（当前值 - 期初快照）随之更新。
+async function scheduledStatRefresh() {
+  if (refreshStats.isBusy()) return;
+  try {
+    const r = await refreshStats.refreshStats();
+    if (r.ok) {
+      console.log(`[schedule:refresh] 刷新 ${r.refreshed}/${r.targets}（库存 ${r.total}），错误 ${r.errors}，耗时 ${(r.ms / 1000).toFixed(1)}s`);
+      // 快照已由 refreshStats 内部补写；此处强制让派生数据（榜单/统计）读新库
+      await services.loadLibrary(true);
+    } else {
+      console.log(`[schedule:refresh] 跳过：${r.reason || "unknown"}`);
+    }
+  } catch (e) {
+    console.error(`[schedule:refresh] 刷新失败: ${e.message}`);
+  }
+}
+
+// 每 2 小时：收录 + 审核。复用现有采集周期（collectAll 自带增量跳过/全量语义与
+// 周期进度上报）+ 独立审核消化（reviewPending 单飞锁，只处理 ai_reviewed===false）。
+async function scheduledCollectAndReview() {
+  try {
+    await collector.collectAll(false);
+  } catch (e) {
+    console.error(`[schedule:collect] 采集失败: ${e.message}`);
+  }
+  try {
+    const done = await collector.reviewPending({ batch: 20, persistEvery: 10 });
+    if (done > 0) console.log(`[schedule:review] 本轮审核完成 ${done} 项`);
+  } catch (e) {
+    console.error(`[schedule:review] 审核失败: ${e.message}`);
+  }
+}
+
 function serveBoardFromCache(res, kind, pn, ps, order, period) {
   const d = readCached(`board_${period}.json`);
   if (!d || !Array.isArray(d.list)) return null;
@@ -748,6 +799,7 @@ function serveBoardFromCache(res, kind, pn, ps, order, period) {
       next_issue: d.next_issue ?? null,
       date_start: d.date_start ?? null,
       date_end: d.date_end ?? null,
+      score_mode: d.score_mode ?? null,
       count: total,
       new_count: d.new_count ?? items.filter((it) => it.new).length,
       orders: d.orders || [],
@@ -933,6 +985,7 @@ app.get("/api/board/:kind", (req, res, next) => {
         next_issue: d.next_issue ?? null,
         date_start: d.date_start ?? null,
         date_end: d.date_end ?? null,
+        score_mode: d.score_mode ?? null,
         count: total,
         new_count: items.filter((it) => it.new).length,
         orders: d.orders,
@@ -1393,12 +1446,13 @@ app.get("/api/progress/stream", requireLocal, (req, res) => {
     } catch (e) {}
   };
 
-  // 初始快照：当前周期 + 历史 + 独立审核队列状态
+  // 初始快照：当前周期 + 历史 + 独立审核队列状态 + 数据刷新状态
   send("snapshot", {
     current: progress.getCurrentCycle(),
     cycles: progress.listCycles(),
     history: progress.listHistory(),
     review: progress.getReviewState(),
+    refresh: progress.getRefreshState(),
   });
 
   const onEvent = (evt) => send("event", evt);
@@ -1406,12 +1460,14 @@ app.get("/api/progress/stream", requireLocal, (req, res) => {
   const onCycleEnd = (c) => send("cycle:end", c);
   const onStage = (p) => send("stage:update", p);
   const onReview = (r) => send("review:update", r);
+  const onRefresh = (r) => send("refresh:update", r);
 
   progress.bus.on("event", onEvent);
   progress.bus.on("cycle:start", onCycleStart);
   progress.bus.on("cycle:end", onCycleEnd);
   progress.bus.on("stage:update", onStage);
   progress.bus.on("review:update", onReview);
+  progress.bus.on("refresh:update", onRefresh);
 
   // 心跳
   const hb = setInterval(() => {
@@ -1425,13 +1481,14 @@ app.get("/api/progress/stream", requireLocal, (req, res) => {
     progress.bus.off("cycle:end", onCycleEnd);
     progress.bus.off("stage:update", onStage);
     progress.bus.off("review:update", onReview);
+    progress.bus.off("refresh:update", onRefresh);
   });
 });
 
 // 历史快照
 app.get("/api/progress/history", requireLocal, (req, res) => {
   setProgressCors(req, res);
-  res.json({ ok: true, data: { history: progress.listHistory(), cycles: progress.listCycles(), current: progress.getCurrentCycle(), review: progress.getReviewState() } });
+  res.json({ ok: true, data: { history: progress.listHistory(), cycles: progress.listCycles(), current: progress.getCurrentCycle(), review: progress.getReviewState(), refresh: progress.getRefreshState() } });
 });
 
 // 手动触发采集
@@ -1447,6 +1504,32 @@ app.post("/api/collect/trigger", requireLocal, express.json(), (req, res) => {
     });
   });
   res.json({ ok: true, data: { triggered: true, force } });
+});
+
+// 手动触发数据刷新（只刷库内已有条目 stat/score，不新增收录）
+// limit：本轮最多刷多少条（默认 ROUND_LIMIT=900）；limit=0 表示「全量刷新」→ 传 Infinity 把库内全部条目刷一遍
+app.post("/api/refresh/trigger", requireLocal, express.json(), (req, res) => {
+  setProgressCors(req, res);
+  if (refreshStats.isBusy()) {
+    return res.status(409).json({ ok: false, message: "数据刷新进行中，请等待本轮完成" });
+  }
+  const limitRaw = Number(req.body && req.body.limit);
+  const full = req.body && req.body.full === true;
+  // 全量：Infinity（Time budget 仍生效，一轮最多 4 分钟；不过全量通常更想刷完，
+  // 手动全量把时间预算放开到 30 分钟：由 limit=Infinity 触发的这一轮自带宽预算）
+  let limit = refreshStats.ROUND_LIMIT;
+  if (full) limit = Infinity;
+  else if (Number.isFinite(limitRaw) && limitRaw > 0) limit = Math.floor(limitRaw);
+  setImmediate(() => {
+    refreshStats
+      .refreshStats({ limit })
+      .then((r) => {
+        if (r.ok) console.log(`[refresh:trigger] 手动刷新完成：${r.refreshed}/${r.targets}，错误 ${r.errors}`);
+        else console.log(`[refresh:trigger] 手动刷新跳过：${r.reason}`);
+      })
+      .catch((e) => console.error("[refresh:trigger] 手动刷新失败:", e.message));
+  });
+  res.json({ ok: true, data: { triggered: true, full, limit: full ? "all" : limit } });
 });
 
 app.use((req, res) => fail(res, 404, "not found"));
@@ -1468,6 +1551,13 @@ app.listen(config.port, () => {
   setInterval(syncEvo, 24 * 3600 * 1000);
   // vocabili 日刊同步：每天凌晨 4 点定点抓取（日刊凌晨 3 点更新，4 点抓确保拿到新一期）
   scheduleDailyAt(4, syncVocabili);
+  // ---- 调度改造（m10418）----
+  // 每 5 分钟：数据刷新 + 统分（只刷库内已有条目 stat/score，不新增收录）
+  setTimeout(() => scheduledStatRefresh(), 20 * 1000); // 启动 20s 后先跑一轮，避免与启动序列抢闸
+  setInterval(scheduledStatRefresh, 5 * 60 * 1000);
+  // 每 2 小时：收录 + 审核（collectAll 增量语义 + reviewPending 只消化待审项）
+  setTimeout(() => scheduledCollectAndReview(), 90 * 1000); // 首轮放在启动序列之后（1.5s 的 refreshLibrary 若命中新鲜库会秒回）
+  setInterval(scheduledCollectAndReview, 2 * 3600 * 1000);
   // 启动独立后台 AI 审核 worker（解耦采集与审核：不阻塞采集、串行消化待审项）
   // AI_REVIEW_ENABLED=false 时不启动：此时 aiReview.check 走 fail-open 放行，且不请求上游
   if (config.aiReview.enabled) {
