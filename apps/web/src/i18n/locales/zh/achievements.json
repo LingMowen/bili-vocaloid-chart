@@ -32,6 +32,8 @@
   "achievedOn": "{{date}} 达成",
   "achievedBefore": "{{date}} 之前已达成",
   "achievedAfter": "{{date}} 之后达成",
+  "basisChart": "依据：eVocalRank / biliran 周榜播放增量累加结果（只统计上榜周，故为下界，结论可靠）",
+  "basisSnapshot": "依据：站内每日统计快照（覆盖近 40 天，更早的时间无法确定）",
   "emptyWeekly": "暂无达成记录",
   "insufficientPeriods": "本站该榜历史仅 {{n}} 期，不足以判定（需至少 {{need}} 期）",
   "gappedPeriods": "本站该榜历史共 {{n}} 期且中间有断档，无法形成连续 {{need}} 期记录（需补齐历史后才会出现）",

@@ -32,6 +32,8 @@
   "achievedOn": "Achieved on {{date}}",
   "achievedBefore": "Achieved before {{date}}",
   "achievedAfter": "Achieved after {{date}}",
+  "basisChart": "Based on accumulated weekly play counts from eVocalRank / biliran (chart weeks only, so it is a lower bound and the conclusion is sound)",
+  "basisSnapshot": "Based on the site's daily snapshots (about 40 days of coverage; earlier dates cannot be determined)",
   "emptyWeekly": "No achievements yet",
   "insufficientPeriods": "Only {{n}} issues of history available (at least {{need}} needed)",
   "gappedPeriods": "History has {{n}} issues with gaps — {{need}} consecutive issues can't form until the gap is filled",

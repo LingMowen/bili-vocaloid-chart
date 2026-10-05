@@ -219,6 +219,10 @@ function WeekCard({ item, index, type, board }) {
     const threshold = Number(item.meta?.threshold) || 0;
     // 达成时间由后端从 stat_daily 逐日快照回溯，精度分三档，如实标注不假装精确
     const ad = item.achieved_date;
+    // 达成时间由后端从 stat_daily 快照 + 历史榜单增量累加回溯，精度如实标注，不假装精确。
+    // basis=chart-accum 表示依据是 evo/biliran 周榜增量累加出的下界，比快照上界早好几年。
+    const basis = item.achieved_basis || "stat_daily";
+    const basisHint = basis === "chart-accum" ? t("achievements.basisChart") : t("achievements.basisSnapshot");
     const achievedText = !ad
       ? ""
       : item.achieved_precision === "before"
@@ -261,7 +265,7 @@ function WeekCard({ item, index, type, board }) {
             {achievedText && (
               <>
                 <span className="text-muted-foreground/30">·</span>
-                <span>{achievedText}</span>
+                <span title={basisHint}>{achievedText}</span>
               </>
             )}
           </div>
