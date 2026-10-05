@@ -217,6 +217,15 @@ function WeekCard({ item, index, type, board }) {
   if (isViewType(type)) {
     const view = Number(item.meta?.view) || 0;
     const threshold = Number(item.meta?.threshold) || 0;
+    // 达成时间由后端从 stat_daily 逐日快照回溯，精度分三档，如实标注不假装精确
+    const ad = item.achieved_date;
+    const achievedText = !ad
+      ? ""
+      : item.achieved_precision === "before"
+        ? t("achievements.achievedBefore", { date: ad })
+        : item.achieved_precision === "after"
+          ? t("achievements.achievedAfter", { date: ad })
+          : t("achievements.achievedOn", { date: ad });
     return (
       <article className="group overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">
         <div className="relative aspect-video overflow-hidden bg-muted">
@@ -247,6 +256,12 @@ function WeekCard({ item, index, type, board }) {
                   {t("achievements.threshold")}&nbsp;
                   <span className="font-semibold tabular-nums">{threshold.toLocaleString()}</span>
                 </span>
+              </>
+            )}
+            {achievedText && (
+              <>
+                <span className="text-muted-foreground/30">·</span>
+                <span>{achievedText}</span>
               </>
             )}
           </div>

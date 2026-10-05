@@ -1314,18 +1314,67 @@ async function scanBoardAchievements(board) {
 // 数据量：10 万 3634 首 / 100 万 563 首 / 1000 万 26 首（20545 库实测）。
 const _achViewCache = { fp: null, data: [] };
 
+// 从 stat_daily 逐日快照回溯「累计播放量首次跨过各档门槛」的日期。
+// 快照粒度是天，且只覆盖最近约 44 天，所以只能给出三种精度，必须如实标注，不能假装是精确值：
+//   exact  —— 某日快照首次达到门槛，达成于该日（真实落在前一快照日之后、该日之内）
+//   before —— 最早一期快照就已达标，说明达成于该日之前（快照起点之前的老歌都落这里）
+//   after  —— 最新一期快照仍未达标，说明达成于最新快照日之后（近期才跨线的歌落这里）
+// 缓存指纹 = library 指纹 + 快照目录（期数与最新日期），任一变化即重算。
+const _achAchvCache = { fp: null, map: null };
+
+function computeViewAchievedDates() {
+  const dates = statHistory.listSnapshotDates();
+  if (!dates.length) return { map: new Map(), firstDate: null, lastDate: null };
+  const libStat = statSafe(path.join(CACHE_DIR, "library.json"));
+  const fp = `${libStat}|${dates.length}|${dates[0]}|${dates[dates.length - 1]}`;
+  if (_achAchvCache.fp === fp && _achAchvCache.map) {
+    return { map: _achAchvCache.map, firstDate: dates[0], lastDate: dates[dates.length - 1] };
+  }
+  const firstDate = dates[0];
+  const lastDate = dates[dates.length - 1];
+  // 小门槛先填：view 过百万时殿堂曲必然也达成，一次遍历即可同时点亮多档
+  const cats = [...ACH_VIEW_CATEGORIES].sort((a, b) => a.viewThreshold - b.viewThreshold);
+  const map = new Map(); // aid -> { [catKey]: { date, precision } }
+  for (const date of dates) {
+    const snap = statHistory.snapshotAt(date);
+    if (!snap) continue;
+    const isFirst = date === firstDate;
+    for (const aid of Object.keys(snap)) {
+      const cell = snap[aid];
+      const v = Number(cell && cell.view) || 0;
+      if (v <= 0) continue;
+      let rec = map.get(aid);
+      if (!rec) {
+        rec = {};
+        map.set(aid, rec);
+      }
+      for (const c of cats) {
+        if (rec[c.key]) continue;
+        if (v >= c.viewThreshold) rec[c.key] = { date, precision: isFirst ? "before" : "exact" };
+      }
+    }
+  }
+  _achAchvCache.fp = fp;
+  _achAchvCache.map = map;
+  return { map, firstDate, lastDate };
+}
+
 async function buildViewMilestoneAchievements(type) {
   const items = await loadLibrary();
   const libStat = statSafe(path.join(CACHE_DIR, "library.json"));
   if (_achViewCache.fp === libStat && _achViewCache.data.length) {
     return type && type !== "all" ? _achViewCache.data.filter((x) => x.category === type) : _achViewCache.data;
   }
+  const { map: achvMap, lastDate: snapLastDate } = computeViewAchievedDates();
   const out = [];
   for (const c of ACH_VIEW_CATEGORIES) {
     for (const it of items) {
       if (!it || !it.aid) continue;
       const v = Number(it.view) || 0;
       if (v < c.viewThreshold) continue;
+      const hit = (achvMap.get(Number(it.aid)) || achvMap.get(String(it.aid)) || {})[c.key];
+      // 快照里查不到 = 该 aid 在所有快照日都未达标（新入库或刚跨线）→ after
+      const achieved = hit || { date: snapLastDate, precision: "after" };
       out.push({
         category: c.key,
         song_id: it.aid,
@@ -1333,13 +1382,10 @@ async function buildViewMilestoneAchievements(type) {
         ranks: {},
         start_issue: null,
         end_issue: null,
-        // 累计播放量是「至今」的量，没有"达成期号"；用刷新时间近似达成日期
+        // 累计播放量是「至今」的量，没有"达成期号"；达成日期由 stat_daily 快照回溯得出
         achieved_issue: null,
-        achieved_date: it.lastRefreshAt
-          ? new Date(it.lastRefreshAt).toISOString().slice(0, 10)
-          : it.pubdate
-            ? new Date(it.pubdate * 1000).toISOString().slice(0, 10)
-            : null,
+        achieved_date: achieved.date,
+        achieved_precision: achieved.precision,
         dropped_issue: null,
         on_board_count: null,
         total_count: null,
