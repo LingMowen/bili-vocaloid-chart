@@ -27,6 +27,20 @@ function getReviewState() {
   return reviewState ? { ...reviewState } : null;
 }
 
+// ---- 独立 5 分钟「数据刷新 + 统分」的状态（不绑定采集周期）----
+// 与 reviewState 同构：不依赖 newCycle()，因为刷新是常驻调度，没有"周期开始/结束"语义，
+// 而且 updateStage/bumpStat 在无 currentCycle 时直接 return，写不进进度页。
+let refreshState = null; // { running, total, targets, done, errors, snapshot, ms, endedAt, truncated, updatedAt }
+
+function setRefreshState(partial) {
+  refreshState = { ...(refreshState || {}), ...partial, updatedAt: Date.now() };
+  bus.emit("refresh:update", { ...refreshState });
+}
+
+function getRefreshState() {
+  return refreshState ? { ...refreshState } : null;
+}
+
 function newCycle(kind /* "incremental" | "full" | "auto" */) {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const cycle = {
@@ -149,4 +163,6 @@ module.exports = {
   listCycles,
   setReviewState,
   getReviewState,
+  setRefreshState,
+  getRefreshState,
 };

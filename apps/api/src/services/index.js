@@ -1,11 +1,16 @@
 const collector = require("../collector");
 const statHistory = require("../statHistory");
 const evoStats = require("../evoStats");
+const biliranSync = require("../biliranSync");
 const boardIndex = require("../boardIndex");
 const { canonicalGirl, canonicalGirls } = require("../girls");
 const {
   ORDER_KEYS,
   chartScore,
+  sInteract,
+  timeFactor,
+  fixFactor,
+  dailyScore,
   attachRanks,
   classifyLang,
   LANG_NAMES,
@@ -108,7 +113,12 @@ function scoreWindow(items, win, snapCache) {
   const toSnap = load(dayKeyOf(win.endTs - 1));
   if (!fromSnap || !toSnap) return null;
   const deltas = statHistory.deltaSnapshot(fromSnap, toSnap);
-  const arr = [];
+  // 窗口天数（周=7、月=28~31、年=365/366、日=1）；用户拍板「日增量取平均值」：
+  // 无逐日快照时整窗增量 ÷ 天数 = 日均增量，周期总分 = Σ 每天 dailyScore(日均, t_d, avgS)
+  const days = Math.max(1, Math.round((win.endTs - win.startTs) / 86400));
+  // 第一遍：算日均增量与互动分 S，收集全库 S 均值（Avg 全库口径，去语种）
+  const pend = [];
+  const sList = [];
   for (const it of items) {
     if (!it.aid) continue;
     const aid = String(it.aid);
@@ -122,9 +132,23 @@ function scoreWindow(items, win, snapCache) {
         ? { view: to.view, favorite: to.favorite, coin: to.coin, like: to.like, danmaku: to.danmaku, reply: to.reply, share: to.share }
         : null);
     if (!dstat) continue;
-    const score = chartScore(dstat);
+    const dailyStat = scaleStat(dstat, 1 / days);
+    const s = sInteract(dailyStat);
+    if (s > 0) sList.push(s);
+    pend.push({ aid, dstat: dailyStat, pubdate: it.pubdate || 0 });
+  }
+  const avgS = sList.length ? sList.reduce((a, b) => a + b, 0) / sList.length : 0;
+  // 第二遍：按新公式逐日求和（t 逐日递增 → T 每天不同）
+  const arr = [];
+  for (const p of pend) {
+    let score = 0;
+    for (let d = 0; d < days; d++) {
+      const dayEndTs = win.startTs + (d + 1) * 86400;
+      const t = p.pubdate ? Math.max(0, Math.floor((dayEndTs - p.pubdate) / 86400)) : 14;
+      score += dailyScore(p.dstat, t, avgS);
+    }
     if (score <= 0) continue;
-    arr.push({ aid, score });
+    arr.push({ aid: p.aid, score });
   }
   arr.sort((a, b) => b.score - a.score);
   const map = new Map();
@@ -208,8 +232,26 @@ async function buildBoard(period, issue) {
     evoData = Object.keys(r.sums).length ? r : null;
     return evoData;
   };
+  // biliran（2022-07 前历史期补数源，用户 m00799 拍板「前面的数据要包含上」）：
+  // 无快照基线、evo 也无、但 biliran 覆盖该窗口时，用 biliran 差分（期末−期初累计快照）还原增量。
+  // biliran 无 coin/like/share → 缺失项为 0，data_source="biliran"。
+  let biliData = null;
+  let biliLoaded = false;
+  const ensureBili = () => {
+    if (biliLoaded) return biliData;
+    biliLoaded = true;
+    const r = biliranSync.deltaBetween(win.startTs, win.endTs);
+    biliData = Object.keys(r.sums).length ? r : null;
+    return biliData;
+  };
   const list = [];
   const noBaseCandidates = []; // 无快照基线且非窗口内新歌的条目（评分异常护栏候选）
+  // 窗口天数（周=7、月=28~31、年=365/366、日=1）；用户拍板「日增量取平均值」：
+  // 整窗增量 ÷ 天数 = 日均增量，周期总分 = Σ 每天 dailyScore(日均, t_d, avgS)（t 逐日递增）
+  const days = Math.max(1, Math.round((endTs - startTs) / 86400));
+  // ---- 第一遍：算每条增量与互动分 S，收集全库 S 均值（Avg 全库口径，去语种） ----
+  const pend = [];
+  const sList = [];
   for (const it of items) {
     if (!it.aid) continue;
     const isNewSong = it.pubdate && it.pubdate >= startTs && it.pubdate < endTs;
@@ -221,6 +263,11 @@ async function buildBoard(period, issue) {
     const sums = evo && evo.sums;
     const usedEvo = !isNewSong && !baseHasAid && !!(sums && Object.prototype.hasOwnProperty.call(sums, aidStr));
     const evoSrc = usedEvo ? evo.sources?.[aidStr] : null;
+    // biliran：evo 也没有时的兜底（2022-07 前历史期）
+    const bili = !baseHasAid && !usedEvo ? ensureBili() : null;
+    const biliSums = bili && bili.sums;
+    const usedBili = !isNewSong && !baseHasAid && !usedEvo && !!(biliSums && Object.prototype.hasOwnProperty.call(biliSums, aidStr));
+    const biliSrc = usedBili ? bili.sources?.[aidStr] : null;
     // 源站一期是「跨 7 天的周采集量」（如 738 期 = 09-19 ~ 09-26）。
     // 周/月榜直接取窗口内各期合计值即可；日榜窗口只有 1 天，照搬会把 7 天量当成 1 天增量、
     // 虚高数倍（新歌会霸榜），所以按采集跨度折算成日均增量。
@@ -243,8 +290,24 @@ async function buildBoard(period, issue) {
         // 增量来源：缺基线且非窗口内新歌时优先用 evocalrank 周增量累加（源站采集到的原始数值）
         : usedEvo
           ? evoStat
-          : { view: 0, favorite: 0, coin: 0, like: 0, danmaku: 0, reply: 0, share: 0 };
-    const score = chartScore(dstat);
+          : usedBili
+            ? biliSums[aidStr]
+            : { view: 0, favorite: 0, coin: 0, like: 0, danmaku: 0, reply: 0, share: 0 };
+    const dailyStat = scaleStat(dstat, 1 / days);
+    const s = sInteract(dailyStat);
+    if (s > 0) sList.push(s);
+    pend.push({ it, isNewSong, baseHasAid, usedEvo, usedBili, evoSrc, evoTime, evoDays, dstat, dailyStat });
+  }
+  const avgS = sList.length ? sList.reduce((a, b) => a + b, 0) / sList.length : 0;
+  // ---- 第二遍：按新公式（log2×S×T×Fix）逐日求和出分并构建榜单条目 ----
+  for (const p of pend) {
+    const { it, isNewSong, baseHasAid, usedEvo, usedBili, evoSrc, evoTime, evoDays, dstat, dailyStat } = p;
+    let score = 0;
+    for (let d = 0; d < days; d++) {
+      const dayEndTs = startTs + (d + 1) * 86400;
+      const t = it.pubdate ? Math.max(0, Math.floor((dayEndTs - it.pubdate) / 86400)) : 14;
+      score += dailyScore(dailyStat, t, avgS);
+    }
     if (score <= 0) continue;
     const entry = {
       aid: it.aid,
@@ -271,12 +334,17 @@ async function buildBoard(period, issue) {
           ? period === "daily" && evoDays > 1
             ? "evocalrank-daily-avg"
             : "evocalrank"
+          : usedBili
+            ? "biliran"
           : isNewSong
             ? "current"
             : "snapshot",
       period,
       issue: issueNum,
       new: isNewSong,
+      // 计分口径标记（2026-10-05 新公式切换，用户拍板「日增量取平均值」）：
+      //   daily-avg-sum = 整窗增量 ÷ 窗口天数 = 日均增量，周期总分 = Σ 每天 dailyScore(日均, t_d)
+      score_mode: "daily-avg-sum",
       prev_rank: null,
       prev_score: null,
       delta: null,
@@ -417,6 +485,7 @@ async function buildBoard(period, issue) {
     count: list.length,
     new_count: list.filter((it) => it.new).length,
     orders: ORDER_KEYS,
+    score_mode: "daily-avg-sum",
     list,
   };
 }

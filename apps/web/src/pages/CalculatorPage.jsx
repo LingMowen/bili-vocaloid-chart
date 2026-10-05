@@ -234,6 +234,39 @@ function ScoreDisplay({ data, results, editable = false, showFix = false, onData
     }),
   );
 
+  // 新公式（board="new"）：展示单日总分 + S_互动 / T_时间 / Fix 明细，不走七项分点
+  if (results.detail) {
+    const d = results.detail;
+    return (
+      <div className="space-y-3 xs:space-y-4">
+        <div className="flex flex-col gap-1 border-b pb-3 xs:flex-row xs:justify-between">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold tabular-nums">
+              {fmtInt(Number.isNaN(results.points.total) ? 0 : results.points.total)}
+            </span>
+            <span className="text-sm text-muted-foreground">{t("calculator.newScoreTotal")}</span>
+          </div>
+          <div className="text-sm text-muted-foreground">log₂(ΔV + 100) × S_互动 × T_时间 × Fix</div>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-sm xs:grid-cols-3 xs:gap-2">
+          <div className="rounded-lg bg-muted/60 px-3 py-2">
+            <div className="text-xs text-muted-foreground">{t("calculator.newScoreS")}</div>
+            <div className="mt-0.5 font-semibold tabular-nums">{fmt2(d.s)}</div>
+          </div>
+          <div className="rounded-lg bg-muted/60 px-3 py-2">
+            <div className="text-xs text-muted-foreground">{t("calculator.newScoreT")}</div>
+            <div className="mt-0.5 font-semibold tabular-nums">×{fmt2(d.timeFactor)}</div>
+          </div>
+          <div className="rounded-lg bg-muted/60 px-3 py-2">
+            <div className="text-xs text-muted-foreground">{t("calculator.newScoreFix")}</div>
+            <div className="mt-0.5 font-semibold tabular-nums">×{fmt2(d.fix)}</div>
+          </div>
+        </div>
+        <div className="text-xs text-muted-foreground">t = {d.t} 天</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 xs:space-y-4">
       {showFix && (
@@ -446,6 +479,7 @@ function Controls({ form, onPatch }) {
 
   const showCopyright = needsIssue(form.board);
   const showNewSong = form.board === "biliboard";
+  const showDays = form.board === "new"; // 新公式需要「发布天数 t」
 
   return (
     <div className="space-y-5">
@@ -497,6 +531,22 @@ function Controls({ form, onPatch }) {
         {showNewSong && (
           <NewSongField value={form.timeOffset ?? -1} onChange={(v) => onPatch({ timeOffset: v })} />
         )}
+
+        {showDays && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">{t("calculator.daysSincePublish")}</span>
+            <input
+              type="number"
+              min="0"
+              value={form.t ?? 1}
+              onChange={(e) => onPatch({ t: Math.max(0, toInt(e.target.value)) })}
+              className={`${SELECT_CLS} w-20`}
+            />
+          </div>
+        )}
+        {showDays && (
+          <p className="mt-1 text-xs text-muted-foreground">{t("calculator.newScoreHint")}</p>
+        )}
       </div>
     </div>
   );
@@ -528,6 +578,7 @@ function parseParams(searchParams) {
     board,
     issue: num("issue", 1),
     timeOffset: num("timeOffset", 0),
+    t: num("t", 1),
   };
 }
 
@@ -579,8 +630,9 @@ export default function CalculatorPage() {
         copyright: toInt(form.copyright),
         issue: form.issue ?? 1,
         timeOffset: form.timeOffset ?? -1,
+        t: toInt(form.t ?? 1),
       }),
-    [data, form.board, form.copyright, form.issue, form.timeOffset],
+    [data, form.board, form.copyright, form.issue, form.timeOffset, form.t],
   );
 
   const onMetricChange = useCallback(

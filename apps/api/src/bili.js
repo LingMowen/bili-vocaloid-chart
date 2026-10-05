@@ -117,6 +117,43 @@ async function fetchVideo(idParam) {
   return { ok: true, data: out };
 }
 
+/**
+ * 只取一个稿件的 stat（播放/点赞/投币/收藏/分享/评论/弹幕）——5 分钟刷新专用。
+ *
+ * 与 fetchVideo 的区别：只发 1 次 /x/web-interface/view，不拉 tags / pages。
+ * fetchVideo 每条目 3 请求，5 分钟一轮刷几百条会直接撞风控；刷新只需要 stat，
+ * tags/pages 是收录时才需要的静态信息，刷新阶段不必重取。
+ *
+ * @param {number} aid
+ * @returns {Promise<{ok:boolean, code?:number, message?:string, data?:object}>}
+ */
+async function fetchStat(aid) {
+  const client = await getClient();
+  const { getVideoInfo } = await sdk();
+  try {
+    const view = await call(() => getVideoInfo(client, { aid }));
+    if (!view || view.code !== 0) {
+      return { ok: false, code: view?.code ?? -1, message: view?.message ?? "request failed" };
+    }
+    const data = view.data;
+    return {
+      ok: true,
+      data: {
+        aid: data.aid ?? aid,
+        bvid: data.bvid || "",
+        duration: data.duration || 0,
+        pubdate: data.pubdate || 0, // 秒级，与库内条目一致，不乘 1000
+        stat: pick(data.stat || {}, [
+          "view", "danmaku", "reply", "favorite", "coin", "share", "like", "his_rank",
+        ]),
+      },
+    };
+  } catch (e) {
+    // SDK 的响应拦截器对 code!==0 直接抛异常（不是返回对象），这里统一收敛成 ok:false
+    return { ok: false, code: e?.code ?? -1, message: e?.message || String(e) };
+  }
+}
+
 async function member(mid) {
   const client = await getClient();
   const { getUserInfo, getUserStat } = await sdk();
@@ -168,4 +205,6 @@ async function member(mid) {
 const video = (aid) => fetchVideo({ aid });
 const videoByBvid = (bvid) => fetchVideo({ bvid });
 
-module.exports = { video, videoByBvid, member, getClient };
+const stat = (aid) => fetchStat(aid);
+
+module.exports = { video, videoByBvid, stat, member, getClient };

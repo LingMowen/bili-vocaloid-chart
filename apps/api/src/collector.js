@@ -945,4 +945,9 @@ module.exports = {
   backfillDesc,
   startDescWorker,
   LIBRARY_FILE,
+  // 5 分钟「数据刷新」调度用：需要直接读写库文件，但不得改变收录语义
+  // （writeDiskKeepTs 保留原 ts，否则 collectAll 会误判库新鲜而跳过收录）
+  readDisk,
+  writeDisk,
+  writeDiskKeepTs,
 };

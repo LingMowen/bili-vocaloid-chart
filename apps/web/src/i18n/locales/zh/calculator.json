@@ -35,5 +35,12 @@
   "copyrightOriginalAsRepost": "自制投转载",
   "autoRefresh": "自动刷新",
   "autoRefreshOn": "自动刷新已开启",
-  "autoRefreshOff": "自动刷新已关闭"
+  "autoRefreshOff": "自动刷新已关闭",
+  "boardNew": "新计分公式",
+  "daysSincePublish": "发布天数 t",
+  "newScoreHint": "输入周期内各指标增量，按新公式计算单日总分。Avg 为当日全库有增量条目的 S_互动 均值（计算器无法获取，Fix 按 1.0 计算；榜单实际使用全库 Avg）。",
+  "newScoreTotal": "单日总分",
+  "newScoreS": "互动分 S_互动",
+  "newScoreT": "时间系数 T_时间",
+  "newScoreFix": "修正系数 Fix"
 }

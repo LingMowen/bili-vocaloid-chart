@@ -73,6 +73,50 @@ function chartScore(stat) {
   return Math.round(playPt + interPt + favPt + coinPt + likePt);
 }
 
+// ---- 新计分公式（2026-10-05 切换，去语种系数）----
+// 来源：用户提供飞书文档公式（docs/scoring/2026-10-05-计分规则改造方案.md）。
+//   单日总分 = log2(ΔV + 100) × S_互动 × T_时间 × Fix
+//   S_互动 = (ΔL + 3·ΔB + 4·ΔF + 2·ΔC + ΔD) / (ΔV + 200) × 1000
+//   T(t)：t≤4 → 1.6-0.15t；5≤t≤14 → 1.0；t>14 → 21/(t+7)
+//   Fix：S < 0.2·Avg → 0.3；S > 5·Avg → 5·Avg/S；其他 → 1.0（Avg 全库口径）
+// ΔV=view、ΔL=like、ΔB=coin、ΔF=favorite、ΔC=danmaku、ΔD=reply；share 不参与计分。
+// 输入均为「周期内增量 stat」（与 chartScore 同形态），t=发布至今天数。
+
+// 互动分 S_互动（分母 +200 平滑，避免小播放虚高）
+function sInteract(d) {
+  const v = Number(d.view) || 0;
+  const l = Number(d.like) || 0;
+  const b = Number(d.coin) || 0;
+  const f = Number(d.favorite) || 0;
+  const c = Number(d.danmaku) || 0;
+  const r = Number(d.reply) || 0;
+  return ((l + 3 * b + 4 * f + 2 * c + r) / (v + 200)) * 1000;
+}
+
+// 时间系数（t 为发布至今天数，向下取整；缺 pubdate 由调用方传 14 → T=1.0）
+function timeFactor(t) {
+  const tt = Math.max(0, Math.floor(Number(t) || 0));
+  if (tt <= 4) return 1.6 - 0.15 * tt;
+  if (tt <= 14) return 1.0;
+  return 21 / (tt + 7);
+}
+
+// 修正系数 Fix（avgS 为当日全库有增量条目的 S 均值；缺失/为 0 时返回 1.0）
+function fixFactor(s, avgS) {
+  const avg = Number(avgS);
+  if (!(avg > 0)) return 1.0;
+  if (s < 0.2 * avg) return 0.3;
+  if (s > 5 * avg) return (5 * avg) / s;
+  return 1.0;
+}
+
+// 单日总分（d=当日增量 stat；t=发布至今天数；avgS=当日全库均值）
+function dailyScore(d, t, avgS) {
+  const v = Number(d.view) || 0;
+  const s = sInteract(d);
+  return Math.round(Math.log2(v + 100) * s * timeFactor(t) * fixFactor(s, avgS));
+}
+
 function attachRanks(items, fields) {
   for (const f of fields) {
     const order = items
@@ -119,6 +163,10 @@ module.exports = {
   NEW_WINDOW,
   compositeScore,
   chartScore,
+  sInteract,
+  timeFactor,
+  fixFactor,
+  dailyScore,
   attachRanks,
   isNew,
   classifyLang,
