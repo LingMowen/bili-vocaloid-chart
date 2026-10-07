@@ -758,6 +758,22 @@ async function scheduledStatRefresh() {
   }
 }
 
+// 每 10 分钟：新稿快速通道。只发现 + 收录「库里没有的最近投稿」（tids=30 pubdate
+// 排序的分区检索，候选量几十到几百、秒级完成），把新视频发现延迟从"等 2h 大周期
+// + 万级候选排队"压到分钟级。与 collectAll 互斥（内部 _lock 检测），不改变任何
+// 收录判定口径。实测修复前发现延迟 p50=2 天 / p90=40 天（.tmp/measure-discovery-lag.cjs）。
+async function scheduledQuickDiscover() {
+  try {
+    const r = await collector.quickDiscover();
+    if (r && r.ok && r.added) {
+      console.log(`[schedule:quick] 新稿收录 ${r.added} 首（发现 ${r.found}，库外候选 ${r.candidates}）`);
+      await services.loadLibrary(true);
+    }
+  } catch (e) {
+    console.error(`[schedule:quick] 快速通道失败: ${e.message}`);
+  }
+}
+
 // 每 2 小时：收录 + 审核。复用现有采集周期（collectAll 自带增量跳过/全量语义与
 // 周期进度上报）+ 独立审核消化（reviewPending 单飞锁，只处理 ai_reviewed===false）。
 async function scheduledCollectAndReview() {
@@ -1558,6 +1574,10 @@ app.listen(config.port, () => {
   // 每 2 小时：收录 + 审核（collectAll 增量语义 + reviewPending 只消化待审项）
   setTimeout(() => scheduledCollectAndReview(), 90 * 1000); // 首轮放在启动序列之后（1.5s 的 refreshLibrary 若命中新鲜库会秒回）
   setInterval(scheduledCollectAndReview, 2 * 3600 * 1000);
+  // 每 10 分钟：新稿快速通道（只发现+收录库外最近投稿，秒级；与 collectAll 互斥）
+  // 首轮 60s 后跑：启动序列（wbi 初始化/派生刷新）之后，避免抢闸
+  setTimeout(() => scheduledQuickDiscover(), 60 * 1000);
+  setInterval(scheduledQuickDiscover, 10 * 60 * 1000);
   // 启动独立后台 AI 审核 worker（解耦采集与审核：不阻塞采集、串行消化待审项）
   // AI_REVIEW_ENABLED=false 时不启动：此时 aiReview.check 走 fail-open 放行，且不请求上游
   if (config.aiReview.enabled) {

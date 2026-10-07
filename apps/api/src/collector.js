@@ -268,6 +268,9 @@ async function fetchCandidates(client, sdk) {
   progress.emit("stage:detail", { stage: "newlist", msg: `分区最新流收集完成，累计 ${cand.size} 个候选` });
 
   // 2) 关键词检索 + 收集 up
+  //    tids=30（歌手区）过滤必须带：实测不带时按 pubdate 排序的前几页被其他分区
+  //    热门稿占据（20 条里只有 5 条 tid=30），带 tids 后 40/40 全命中且必然含
+  //    近 1 天的新投稿 —— 这是新视频「当天被发现」的主通道。
   const kwTotal = V_KEYWORDS.length * SEARCH_PAGES;
   let kwDone = 0;
   progress.updateStage("search", { label: "关键词检索", total: kwTotal, done: 0, kept: cand.size });
@@ -275,7 +278,9 @@ async function fetchCandidates(client, sdk) {
     for (let pn = 1; pn <= SEARCH_PAGES; pn++) {
       try {
         await _throttle();
-        const r = await sdk.search(client, { keyword: kw, page: pn, pageSize: 50, type: 3, order: "pubdate" });
+        // 注意：SDK 把 `type` 映射成 search_type（视频专用搜索的开关参数），
+        // 传数字 3 是无效值；实测不传 type、传 tids=30 时 40/40 全命中歌手区。
+        const r = await sdk.search(client, { keyword: kw, page: pn, pageSize: 50, order: "pubdate", tids: VOCA_RID });
         for (const block of r?.data?.result || []) {
           if (!block || block.result_type !== "video") continue;
           for (const it of block.data || []) {
@@ -330,26 +335,11 @@ async function fetchCandidates(client, sdk) {
   }
   progress.emit("stage:detail", { stage: "upPosts", msg: `UP 投稿扫描完成，累计 ${cand.size} 个候选` });
 
-  // 5) evocalrank 周刊虚拟歌手中文曲排行榜：全部期的视频链接（补充中文歌历史）
-  let evoTotal = 0;
-  progress.updateStage("evocalrank", { label: "evocalrank 历期", total: 0, done: 0, kept: cand.size });
-  try {
-    const evoAids = await evocalrank.collectAllAids((done, total, uniq) => {
-      progress.updateStage("evocalrank", { total, done, kept: cand.size + uniq });
-    });
-    for (const r of evoAids) {
-      cand.set(r.avid, { aid: r.avid, bvid: r.bvid || "", title: r.title || "", typeid: VOCA_RID, source: "evocalrank" });
-    }
-    evoTotal = evoAids.length;
-    console.log(`[collector] evocalrank 候选 ${evoAids.length} 个`);
-  } catch (e) {
-    console.error(`[collector] evocalrank 收集失败: ${e.message}`);
-  }
-  progress.emit("stage:detail", { stage: "evocalrank", msg: `evocalrank 收集 ${evoTotal} 个，累计候选 ${cand.size}` });
-
-  // 6) 待抓队列：外部发现源（vocabili 日刊等）看到、但本站尚未收录的视频。
+  // 5) 待抓队列：外部发现源（vocabili 日刊等）看到、但本站尚未收录的视频。
   //    这些是「已知该抓」的目标，直接注入候选，绕过分区/UP 池的覆盖限制 ——
   //    保证上一轮漏掉的歌，下一轮 B 站采集一定能覆盖到。
+  //    注入位置在 up 投稿扫描与 evocalrank 之前：验证循环按候选插入顺序处理，
+  //    队列里的歌是「上一轮就该收的」，排到几千条历史老歌后面会让它多等一整轮。
   let pendTotal = 0;
   try {
     const pend = pendingPool.list();
@@ -372,6 +362,25 @@ async function fetchCandidates(client, sdk) {
     console.log(`[collector] 待抓队列注入候选 ${pendTotal} 个`);
     progress.emit("stage:detail", { stage: "pending", msg: `待抓队列注入 ${pendTotal} 个，累计候选 ${cand.size}` });
   }
+
+  // 6) evocalrank 周刊虚拟歌手中文曲排行榜：全部期的视频链接（补充中文歌历史）
+  //    历史老歌不紧急，放在最后，避免把新稿/待抓项挤出验证窗口。
+  let evoTotal = 0;
+  progress.updateStage("evocalrank", { label: "evocalrank 历期", total: 0, done: 0, kept: cand.size });
+  try {
+    const evoAids = await evocalrank.collectAllAids((done, total, uniq) => {
+      progress.updateStage("evocalrank", { total, done, kept: cand.size + uniq });
+    });
+    for (const r of evoAids) {
+      if (cand.has(r.avid)) continue; // 新稿通道已覆盖的不重复计
+      cand.set(r.avid, { aid: r.avid, bvid: r.bvid || "", title: r.title || "", typeid: VOCA_RID, source: "evocalrank" });
+    }
+    evoTotal = evoAids.length;
+    console.log(`[collector] evocalrank 候选 ${evoAids.length} 个`);
+  } catch (e) {
+    console.error(`[collector] evocalrank 收集失败: ${e.message}`);
+  }
+  progress.emit("stage:detail", { stage: "evocalrank", msg: `evocalrank 收集 ${evoTotal} 个，累计候选 ${cand.size}` });
 
   return cand;
 }
@@ -627,6 +636,140 @@ async function collectAll(force = false) {
     throw e;
   } finally {
     _lock = null;
+  }
+}
+
+// ---- 新稿快速通道（quick discover）----
+// 为什么需要它：collectAll 一轮要验证上万候选（约 90 分钟），且受 INCREMENTAL_TTL
+// 与调度周期（2h）限制；实测新发布视频的收录延迟 p50=2 天、p90=40 天 —— 大量
+// 「晚发现」来自 evocalrank 历史老歌挤占验证窗口 + 新稿通道每 2h 才跑一次。
+// 本通道只做一件事：用 tids=30 + order=pubdate 的分区检索拉「最近投稿」，
+// 对**库里没有的** aid 逐条 buildItem 并合并落盘。候选量 = 当日新稿（几十到几百），
+// 秒级完成，可每 10 分钟跑一次，把发现延迟压到分钟级。
+// 与 collectAll 互斥（_lock 存在即跳过），复用同一套过滤/合并/落盘语义，不新增判定口径。
+let _quickLock = null;
+
+// 负缓存：内容层面被拒的库外稿件（黑名单/时长/无证据）。
+// 为什么必须记：这些 aid 永远进不了库，不记的话每 10 分钟都被重新发现、重新验证
+// ——实测一轮 74 条被拒稿 = 74 次详情请求/轮 ≈ 1 万次/天的纯浪费，且白白撞风控配额。
+// 请求层失败（取详情失败）不记，下轮重试；30 天后 TTL 到期重新验证一次
+// （UP 可能改标题/简介/时长重投）。
+const QUICK_NEG_FILE = path.join(CACHE_DIR, "quick_rejected.json");
+const QUICK_NEG_TTL = 30 * 24 * 3600 * 1000;
+const QUICK_NEG_LIMIT = 5000;
+
+let _quickNeg = null;
+function loadQuickNeg() {
+  if (_quickNeg) return _quickNeg;
+  try {
+    _quickNeg = JSON.parse(fs.readFileSync(QUICK_NEG_FILE, "utf8")) || {};
+  } catch (e) {
+    _quickNeg = {};
+  }
+  return _quickNeg;
+}
+function saveQuickNeg() {
+  try {
+    const now = Date.now();
+    // 就地清掉过期与超限条目
+    const entries = Object.entries(_quickNeg).filter(([, v]) => v && now - (v.at || 0) < QUICK_NEG_TTL);
+    if (entries.length > QUICK_NEG_LIMIT) entries.sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
+    _quickNeg = Object.fromEntries(entries.slice(0, QUICK_NEG_LIMIT));
+    const tmp = QUICK_NEG_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(_quickNeg), "utf8");
+    fs.renameSync(tmp, QUICK_NEG_FILE);
+  } catch (e) {
+    console.error(`[quick] 负缓存落盘失败: ${e.message}`);
+  }
+}
+
+async function quickDiscover({ pages = 2, keywords = null } = {}) {
+  if (_lock || _quickLock) return { ok: false, reason: "采集中，跳过快速通道" };
+  _quickLock = (async () => {
+    const client = await _getClient();
+    const sdk = await import("@aemeath-projects/bilibili");
+    const kws = keywords || ["洛天依", "VOCALOID", "初音ミク", "虚拟歌手", "星尘", "海伊", "赤羽", "言和", "乐正绫", "重音テト"];
+    const fresh = new Map();
+    for (const kw of kws) {
+      for (let pn = 1; pn <= pages; pn++) {
+        try {
+          await _throttle();
+          const r = await sdk.search(client, { keyword: kw, page: pn, pageSize: 50, order: "pubdate", tids: VOCA_RID });
+          for (const block of r?.data?.result || []) {
+            if (!block || block.result_type !== "video") continue;
+            for (const it of block.data || []) {
+              if (!it || !it.aid) continue;
+              if (Number(it.tid ?? it.typeid ?? it.type_id) !== VOCA_RID) continue;
+              fresh.set(String(it.aid), it);
+            }
+          }
+        } catch (e) {
+          console.error(`[quick] search "${kw}" p${pn}: ${e.message}`);
+        }
+      }
+    }
+    if (!fresh.size) return { ok: true, found: 0, added: 0 };
+
+    // 只处理库里没有的（新稿），已有条目交给 5 分钟刷新通道
+    const disk = readDisk();
+    const have = new Set(((disk && disk.data) || []).map((x) => String(x.aid)));
+    const pend = pendingPool.aidSet();
+    const neg = loadQuickNeg();
+    const nowMs = Date.now();
+    const negFresh = (aid) => {
+      const v = neg[aid];
+      return Boolean(v && nowMs - (v.at || 0) < QUICK_NEG_TTL);
+    };
+    const todo = [...fresh.entries()].filter(([aid]) => !have.has(aid) && !negFresh(aid));
+    const skippedNeg = [...fresh.keys()].filter((aid) => !have.has(aid) && negFresh(aid)).length;
+    if (!todo.length) return { ok: true, found: fresh.size, added: 0, skipped_neg: skippedNeg };
+
+    const out = [];
+    const pendOutcome = new Map();
+    let errors = 0;
+    let rejected = 0;
+    for (const [aid, it] of todo) {
+      if (_lock) break; // 大周期启动了，让路（已发现的下一轮再收）
+      let item = null;
+      _lastReject = null; // 防异常路径残留上一轮的拒绝原因
+      try {
+        item = await buildItem(client, sdk, aid, it);
+      } catch (e) {
+        errors++;
+      }
+      if (item) out.push(item);
+      else if (item === null && _lastReject && !/取详情失败/.test(_lastReject)) {
+        // 内容层终局判定 → 负缓存；请求层失败（取详情失败/异常）不记，下轮重试
+        neg[aid] = { at: Date.now(), reason: String(_lastReject).slice(0, 120) };
+        rejected++;
+      }
+      if (pend.has(String(aid))) pendOutcome.set(String(aid), { ok: !!item, reason: item ? null : _lastReject });
+    }
+    if (rejected) saveQuickNeg();
+    if (out.length) {
+      const merged = mergeToDisk(out, (disk && disk.data) || []);
+      merged.sort((a, b) => b.score - a.score);
+      _library = merged;
+      _at = Date.now();
+      // complete 继承磁盘值：中途/增量写入不得把完整库降级成 archive 口径。
+      // 必须用 writeDiskKeepTs：quick 通道每 10 分钟跑一次，若把 ts 刷成当前时间，
+      // collectAll 的 INCREMENTAL_TTL(60min) 会永远判定「库新鲜」而跳过收录，
+      // 反而把大周期饿死（同类事故注释见 writeDiskKeepTs 定义处）。
+      writeDiskKeepTs(merged.length, merged, Boolean(disk && disk.complete === true));
+      try { statHistory.saveDailySnapshot(merged); } catch (e) { console.error(`[quick] 快照失败: ${e.message}`); }
+    }
+    if (pendOutcome.size) {
+      try { pendingPool.settle(pendOutcome); } catch (e) { console.error(`[quick] 队列回写失败: ${e.message}`); }
+    }
+    console.log(`[quick] 发现 ${fresh.size} 条近稿，库外待验 ${todo.length}，新收录 ${out.length}，内容拒 ${rejected}${skippedNeg ? `，负缓存跳过 ${skippedNeg}` : ""}${errors ? `，异常 ${errors}` : ""}`);
+    return { ok: true, found: fresh.size, candidates: todo.length, added: out.length, rejected, skipped_neg: skippedNeg, errors };
+  })();
+  try {
+    return await _quickLock;
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  } finally {
+    _quickLock = null;
   }
 }
 
@@ -936,6 +1079,7 @@ async function startDescWorker({ idleMs = 20000, batch = 30 } = {}) {
 
 module.exports = {
   collectAll,
+  quickDiscover,
   buildItem,
   getLastReject: () => _lastReject,
   fetchCandidates,
