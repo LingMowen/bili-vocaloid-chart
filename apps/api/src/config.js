@@ -96,6 +96,11 @@ module.exports = {
   // 同时扫等于同一账号瞬时双倍突发请求，抬高风控概率。错峰半步既保持「按北京时间
   // 整刻度」的可预测性，又不撞车。
   schedulePhaseMs: Number(process.env.SCHEDULE_PHASE_MS) || 0,
+  // 对端 API 基址（审核前的拉取式同步用）。本地配云端 IP 直连、云端配本地 CF 隧道域名。
+  // 为什么两端配不同：本地在 NAT 后云端拉不到，但本地能主动连云端；云端够不到本地局域网，
+  // 靠 Cloudflare 隧道把本地 API 暴露成 sync.ciallo.ltd 才打通。
+  // 未配置时 pullRound 直接 skip，审核照常进行（同步是补齐、不是前置条件）。
+  syncPeerApi: process.env.SYNC_PEER_API || "",
   // 参与路由的服务商（已剔除没配密钥的）与「渠道 → 服务商」表。
   // auth.js 直接用 route.get(type)，不再自己算，避免两处逻辑漂移。
   oauthProviders: oauth.usable,

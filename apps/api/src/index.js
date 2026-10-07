@@ -813,16 +813,35 @@ async function scheduledQuickDiscover() {
 // 每 2 小时：收录 + 审核。复用现有采集周期（collectAll 自带增量跳过/全量语义与
 // 周期进度上报）+ 独立审核消化（reviewPending 单飞锁，只处理 ai_reviewed===false）。
 async function scheduledCollectAndReview() {
+  // 顺序：同步 → 审核 → 采集。
+  // 为什么采集挪到最后：collectAll 一轮约 90 分钟，若排在最前面，"偶数整点审核"会被
+  // 拖到整点 +90min，违背用户「凌晨2/4/6…点审核、审核前同步」的准点要求。
+  // 同步是秒级~分钟级、审核消化待审项，两者排在整点准点执行；耗时的采集放最后。
+  // 新歌发现不受影响：quickDiscover 每 10 分钟已兜住，collectAll 放最后只是延后大周期重建。
   try {
-    await collector.collectAll(false);
+    const s = await syncRound.pullRound();
+    if (s.ok) {
+      console.log(
+        `[schedule:sync] 审核前同步完成：对端 ${s.peerTotal}，拉入新歌 ${s.pulled}，快照补齐 ${s.snapMerged ?? 0} 槽，库存 ${s.localTotal}（${(s.ms / 1000).toFixed(1)}s）`
+      );
+    } else if (s.skipped) {
+      console.log(`[schedule:sync] 跳过同步：${s.reason}`);
+    } else {
+      console.error(`[schedule:sync] 同步失败（不阻断审核）: ${s.reason}`);
+    }
   } catch (e) {
-    console.error(`[schedule:collect] 采集失败: ${e.message}`);
+    console.error(`[schedule:sync] 同步异常（不阻断审核）: ${e.message}`);
   }
   try {
     const done = await collector.reviewPending({ batch: 20, persistEvery: 10 });
     if (done > 0) console.log(`[schedule:review] 本轮审核完成 ${done} 项`);
   } catch (e) {
     console.error(`[schedule:review] 审核失败: ${e.message}`);
+  }
+  try {
+    await collector.collectAll(false);
+  } catch (e) {
+    console.error(`[schedule:collect] 采集失败: ${e.message}`);
   }
 }
 
@@ -1655,6 +1674,13 @@ app.post("/api/sync/items", requireSyncToken, syncJson, async (req, res, next) =
   } catch (e) {
     next(e);
   }
+});
+
+// 读单日统计快照（对端拉历史基线用）。
+app.get("/api/sync/snapshot/:date", requireSyncToken, (req, res) => {
+  const r = syncIngest.readSnapshot(req.params.date);
+  if (!r.ok) return fail(res, 404, r.reason || "无该日快照");
+  res.json({ ok: true, data: r.data });
 });
 
 app.use((req, res) => fail(res, 404, "not found"));
