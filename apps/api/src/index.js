@@ -17,6 +17,10 @@ const evocalrank = require("./evocalrank");
 const boardIndex = require("./boardIndex");
 const refreshStats = require("./refreshStats");
 const syncIngest = require("./syncIngest");
+// syncRound 必须单独 require：scheduledCollectAndReview 调 syncRound.pullRound()，
+// 漏了它会在调度里抛 ReferenceError（被 try/catch 兜住 -> 表现为"跳过同步"），
+// 同步实际从未执行过。这个 bug 用「独立进程直接调 pullRound」测不出来。
+const syncRound = require("./syncRound");
 const { beijingClock, beijingHour, beijingParts, msUntilAligned, BEIJING_OFFSET_MS } = require("./beijingTime");
 const { makeRouter: makeAuthRouter, requireAuth, publicUser } = require("./auth");
 const { db, stmts } = require("./db");
