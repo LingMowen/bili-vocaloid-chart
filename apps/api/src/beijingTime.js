@@ -56,6 +56,24 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// 距下一个「北京时间整刻度」还有多少毫秒。
+// 为什么需要它：setInterval(fn, 5*60*1000) 是从**进程启动那一刻**起算的，本地与云端
+// 启动时间不同 -> 两边的 5 分钟刷新点永久错开（用户 2026-10-07 指出：应该 :05、:10 这样
+// 对齐北京时间刻度同时扫）。改成每次算「到下一个整刻度的延迟」，两边就落在同一挂钟点。
+// 注意必须自递归重排（不能用 setInterval）：一轮跑超时或机器睡眠后，setInterval 会累积
+// 漂移，而每次重新计算延迟能自动回到刻度上。
+//
+// phaseMs：把网格整体平移。用于「错峰半步」——两边都用同一个 B 站 cookie，严格同一刻
+// 同时扫 = 同一账号瞬时双倍突发请求，风控概率上升。本地 phase=0 落 :00/:05，
+// 云端 phase=2.5min 落 :02:30/:07:30，仍在同一张 5 分钟网格上但互相错开。
+function msUntilAligned(stepMs, ts = Date.now(), phaseMs = 0) {
+  if (!(stepMs > 0)) return stepMs;
+  const bj = ts + BEIJING_OFFSET_MS; // 用北京时间挂钟做取整
+  // 目标：下一个满足 (t - phaseMs) % stepMs === 0 的 t
+  const next = Math.ceil((bj - phaseMs + 1) / stepMs) * stepMs + phaseMs;
+  return next - bj;
+}
+
 module.exports = {
   BEIJING_OFFSET_MS,
   beijingNow,
@@ -64,5 +82,6 @@ module.exports = {
   beijingMinute,
   beijingDateKey,
   beijingClock,
+  msUntilAligned,
   sleep,
 };
