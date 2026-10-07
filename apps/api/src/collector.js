@@ -1077,9 +1077,37 @@ async function startDescWorker({ idleMs = 20000, batch = 30 } = {}) {
   })();
 }
 
+// 供同步摄入端点换入内存库：外部改盘后必须同步这里，否则下一轮
+// writeDiskKeepTs 会用内存旧库覆盖刚写入的合并结果（实测 7 分钟内被覆盖回退）。
+function setLibraryCache(data, at = Date.now()) {
+  _library = Array.isArray(data) ? data : null;
+  _at = at;
+  return _library ? _library.length : 0;
+}
+
+// 刷新通道专用落盘：重新读磁盘后按 aid 叠加本轮刷新的条目再写回。
+// 为什么不能直接 writeDiskKeepTs(data)：refreshStats 在函数开头 readDisk 拿到整份库、
+// 逐条改 stat 后写回那份数组。若期间同步摄入端点往库里加了新 aid，直接写回会把
+// 刚摄入的新歌静默抹掉（内存/磁盘竞态，实测同步结果 7 分钟内被覆盖回退）。
+// 这里以「磁盘最新」为底稿，只覆盖本轮刷新过的 aid，磁盘上多出来的条目一律保留。
+function mergeRefreshWrite(updatedArr, complete) {
+  const disk = readDisk();
+  const base = new Map();
+  if (disk && Array.isArray(disk.data)) for (const it of disk.data) if (it && it.aid != null) base.set(String(it.aid), it);
+  for (const it of updatedArr || []) if (it && it.aid != null) base.set(String(it.aid), it);
+  const merged = [...base.values()];
+  writeDiskKeepTs(merged.length, merged, disk ? disk.complete : complete === true);
+  // 同步换内存：否则 _library 仍是缺新条目的旧快照，getLibrary() 会在 TTL 内
+  // 把漏了歌的库交给榜单/统计，表现为「刚同步进来的歌查不到」。
+  setLibraryCache(merged);
+  return merged;
+}
+
 module.exports = {
   collectAll,
   quickDiscover,
+  setLibraryCache,
+  mergeRefreshWrite,
   buildItem,
   getLastReject: () => _lastReject,
   fetchCandidates,

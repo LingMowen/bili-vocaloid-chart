@@ -82,6 +82,7 @@ function deltaSnapshot(fromSnap, toSnap) {
 
 module.exports = {
   KEYS,
+  DAILY_DIR,
   dateKey,
   snapshotAt,
   saveDailySnapshot,
