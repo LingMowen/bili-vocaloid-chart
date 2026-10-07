@@ -9,22 +9,27 @@
 //   我拉对端 manifest -> 算我缺的 aid -> 从对端 items 取整条 -> 本地 ingest（并集+换内存）。
 // 本地在偶数整点跑，云端错峰 +150s 再跑 —— 云端拉到的已是本地同步后的库，两边收敛。
 //
-// 失败策略：对端不可达（本地关机 / 隧道断）时返回 ok:false 并继续审核，不阻塞。
-// 同步是「补齐」不是「前置条件」：审核对自己库里已有的条目判定正确，与对端是否在线无关。
+// 失败策略（用户 2026-10-07 明确）：对端不可达（本地关机 / 隧道断）时**跳过同步、直接审核**，
+// 绝不因为等对端而卡住审核。所以 manifest 探活用短超时（PROBE_TIMEOUT_MS）快速失败，
+// 而不是让审核前白挂满一个 FETCH_TIMEOUT_MS。同步是「补齐」不是「前置条件」：
+// 审核对自己库里已有的条目判定正确，与对端是否在线无关。
 const config = require("./config");
 const collector = require("./collector");
 const statHistory = require("./statHistory");
 const syncIngest = require("./syncIngest");
 
 const FETCH_TIMEOUT_MS = 60 * 1000;
+// 探活超时：对端在不在，8 秒内就该有结论。连不上就立刻放弃同步去审核，
+// 而不是拖满 FETCH_TIMEOUT_MS（隧道冷启动 / DNS 慢时 60s 太久，会把审核准点性打掉）。
+const PROBE_TIMEOUT_MS = 8 * 1000;
 const ITEMS_BATCH = 400; // 与 /api/sync/items 的 MAX_ITEMS(5000) 留足余量
 
-async function peerFetch(peer, path, init = {}) {
+async function peerFetch(peer, path, init = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const url = peer.replace(/\/+$/, "") + path;
   const res = await fetch(url, {
     ...init,
     headers: { "x-sync-token": config.syncToken, ...(init.headers || {}) },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.ok === false) {
@@ -39,8 +44,15 @@ async function pullRound() {
     return { ok: false, skipped: true, reason: "未配置 SYNC_PEER_API / SYNC_TOKEN" };
   }
   const started = Date.now();
+  // 探活：先短超时拉 manifest。对端不可达 → 立即判 skip（不抛给外层挂满 60s），
+  // 上层据此「跳过同步、直接审核」。
+  let man;
   try {
-    const man = await peerFetch(peer, "/api/sync/manifest");
+    man = await peerFetch(peer, "/api/sync/manifest", {}, PROBE_TIMEOUT_MS);
+  } catch (e) {
+    return { ok: false, skipped: true, reason: `对端不可达，跳过同步：${e.message}`, ms: Date.now() - started };
+  }
+  try {
     const peerAids = new Set(man.items.map((it) => String(it.aid)));
     const local = await collector.getLibrary();
     const have = new Set((local || []).map((it) => String(it.aid)));
