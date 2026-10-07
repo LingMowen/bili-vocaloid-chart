@@ -825,12 +825,13 @@ async function scheduledCollectAndReview() {
         `[schedule:sync] 审核前同步完成：对端 ${s.peerTotal}，拉入新歌 ${s.pulled}，快照补齐 ${s.snapMerged ?? 0} 槽，库存 ${s.localTotal}（${(s.ms / 1000).toFixed(1)}s）`
       );
     } else if (s.skipped) {
-      console.log(`[schedule:sync] 跳过同步：${s.reason}`);
+      // 对端不可达 / 未配置 → 跳过同步，直接进入审核（用户 2026-10-07 明确口径）
+      console.log(`[schedule:sync] ${s.reason}，跳过同步直接审核`);
     } else {
-      console.error(`[schedule:sync] 同步失败（不阻断审核）: ${s.reason}`);
+      console.error(`[schedule:sync] 同步失败（跳过，继续审核）: ${s.reason}`);
     }
   } catch (e) {
-    console.error(`[schedule:sync] 同步异常（不阻断审核）: ${e.message}`);
+    console.error(`[schedule:sync] 同步异常（跳过，继续审核）: ${e.message}`);
   }
   try {
     const done = await collector.reviewPending({ batch: 20, persistEvery: 10 });
