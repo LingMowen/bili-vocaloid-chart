@@ -85,6 +85,11 @@ module.exports = {
     .filter(Boolean),
   sessionSecret:
     process.env.SESSION_SECRET || "bili-vocaloid-chart-dev-secret-change-me",
+  // 双向同步摄入端点的鉴权令牌（SYNC_TOKEN）。
+  // 为什么必须校验：/api/sync/* 是「能改库」的写端点，而服务监听 0.0.0.0 且经
+  // Cloudflare 公网可达。无令牌等于任何人都能往库里灌数据。
+  // 未配置时端点直接 503（fail-closed），而不是「允许匿名」——漏配比拒绝更危险。
+  syncToken: process.env.SYNC_TOKEN || "",
   // 参与路由的服务商（已剔除没配密钥的）与「渠道 → 服务商」表。
   // auth.js 直接用 route.get(type)，不再自己算，避免两处逻辑漂移。
   oauthProviders: oauth.usable,

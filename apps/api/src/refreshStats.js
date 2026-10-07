@@ -123,9 +123,11 @@ async function refreshStats({ limit = ROUND_LIMIT, emit = true } = {}) {
         progress.setRefreshState({ done: refreshed, errors });
       }
     }
-    // 分批落盘：保留原 ts，complete 继承磁盘现值
+    // 分批落盘：保留原 ts，complete 继承磁盘现值。
+    // 必须走 mergeRefreshWrite（以磁盘最新为底稿叠加本轮刷新项）：若期间同步摄入端点
+    // 往库里加了新 aid，直接写回本函数开头读到的数组会把刚摄入的新歌静默抹掉。
     try {
-      collector.writeDiskKeepTs(data.length, data, disk.complete === true);
+      collector.mergeRefreshWrite(data, disk.complete === true);
       if (emit) {
         progress.emit("stage:detail", { stage: "refresh", msg: `已刷新 ${refreshed} 条并落盘（失败 ${errors}）` });
       }

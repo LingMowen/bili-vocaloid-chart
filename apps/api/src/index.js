@@ -16,6 +16,7 @@ const evoStats = require("./evoStats");
 const evocalrank = require("./evocalrank");
 const boardIndex = require("./boardIndex");
 const refreshStats = require("./refreshStats");
+const syncIngest = require("./syncIngest");
 const { beijingClock, beijingHour, beijingParts, BEIJING_OFFSET_MS } = require("./beijingTime");
 const { makeRouter: makeAuthRouter, requireAuth, publicUser } = require("./auth");
 const { db, stmts } = require("./db");
@@ -88,7 +89,12 @@ async function wrap(req, res, next, fn) {
   }
 }
 
-app.use(express.json());
+// /api/sync/* 由路由自带的 64mb 解析器处理，这里必须跳过：
+// 否则全局默认 100kb 上限会先把增量库请求判成 413，请求根本到不了路由。
+const parseJson = express.json();
+app.use((req, res, next) =>
+  String(req.path || "").startsWith("/api/sync/") ? next() : parseJson(req, res, next)
+);
 
 // ---- 响应 gzip（内置 zlib，避免额外依赖）----
 // /api/girls 572KB、/api/tags 524KB 这类大响应不压缩会拖慢首屏，尤其是非本地访问。
@@ -1546,6 +1552,79 @@ app.post("/api/refresh/trigger", requireLocal, express.json(), (req, res) => {
       .catch((e) => console.error("[refresh:trigger] 手动刷新失败:", e.message));
   });
   res.json({ ok: true, data: { triggered: true, full, limit: full ? "all" : limit } });
+});
+
+// ---- 双向同步摄入端点（对端服务运行中推送，不停服、不重启）----
+// 为什么走端点而不是外部改文件：collector/services 在进程内存里各持一份库，外部
+// 直接改 cache/library.json 会被下一次刷新落盘用内存旧库覆盖。合并必须发生在进程内。
+// 鉴权：SYNC_TOKEN 请求头比对。服务监听 0.0.0.0 且公网可达，写端点无令牌 = 任何人可灌库；
+//       未配置令牌时返回 503（fail-closed），绝不退化成匿名可写。
+// body 上限单独放宽到 64mb（全局 express.json 默认 100kb 装不下增量库）。
+function requireSyncToken(req, res, next) {
+  if (!config.syncToken) return fail(res, 503, "同步端点未启用（服务端未配置 SYNC_TOKEN）");
+  const got = String(req.headers["x-sync-token"] || "");
+  if (got.length !== config.syncToken.length) return fail(res, 401, "unauthorized");
+  // 定长比较，避免按字节短路带来的时序差
+  const a = Buffer.from(got);
+  const b = Buffer.from(config.syncToken);
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  if (diff !== 0) return fail(res, 401, "unauthorized");
+  next();
+}
+const syncJson = express.json({ limit: "64mb" });
+
+// 对端把「它独有 / 更新的条目」推过来，本进程按 aid 并集合并并换入内存。
+app.post("/api/sync/ingest", requireSyncToken, syncJson, async (req, res, next) => {
+  try {
+    const items = req.body && req.body.items;
+    const r = await syncIngest.ingestLibrary(items);
+    if (!r.ok) return fail(res, 400, r.reason || "摄入失败");
+    console.log(`[sync] 摄入：新增 ${r.added}、更新 ${r.updated}、跳过 ${r.skipped}，库存 ${r.total}`);
+    res.json({ ok: true, data: r });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// 单日统计快照并集（历史基线补齐）。同 aid 取 view 更大者，不整文件覆盖。
+app.post("/api/sync/snapshot", requireSyncToken, syncJson, async (req, res, next) => {
+  try {
+    const { date, items } = (req.body || {});
+    const r = syncIngest.mergeSnapshot(String(date || ""), items);
+    if (!r.ok) return fail(res, 400, r.reason || "快照合并失败");
+    res.json({ ok: true, data: r });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// 本侧库摘要，供对端算差集（只回 aid + lastRefreshAt + stale + view，不回整库）。
+app.get("/api/sync/manifest", requireSyncToken, async (req, res, next) => {
+  try {
+    const items = await collector.getLibrary();
+    const manifest = (items || [])
+      .filter((it) => it && it.aid != null)
+      .map((it) => ({ aid: it.aid, lastRefreshAt: Number(it.lastRefreshAt) || 0, stale: Boolean(it.stale), view: Number(it.view) || 0 }));
+    res.json({ ok: true, data: { total: manifest.length, ts: Date.now(), items: manifest } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// 按 aid 批量取整条记录（对端拿到差集后来这里取详情）。单次上限与摄入端点一致。
+app.post("/api/sync/items", requireSyncToken, syncJson, async (req, res, next) => {
+  try {
+    const aids = req.body && req.body.aids;
+    if (!Array.isArray(aids)) return fail(res, 400, "aids 需为数组");
+    if (aids.length > syncIngest.MAX_ITEMS) return fail(res, 400, `aids 超过上限 ${syncIngest.MAX_ITEMS}`);
+    const want = new Set(aids.map(String));
+    const items = await collector.getLibrary();
+    const found = (items || []).filter((it) => it && want.has(String(it.aid)));
+    res.json({ ok: true, data: { count: found.length, items: found } });
+  } catch (e) {
+    next(e);
+  }
 });
 
 app.use((req, res) => fail(res, 404, "not found"));
