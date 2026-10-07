@@ -90,6 +90,12 @@ module.exports = {
   // Cloudflare 公网可达。无令牌等于任何人都能往库里灌数据。
   // 未配置时端点直接 503（fail-closed），而不是「允许匿名」——漏配比拒绝更危险。
   syncToken: process.env.SYNC_TOKEN || "",
+  // 周期调度的网格平移量（毫秒）。本地留 0 -> 落 :00/:05/:10…；
+  // 云端配 150000（2.5 分钟）-> 落 :02:30/:07:30…，与本地在同一张 5 分钟网格上错开。
+  // 为什么需要：两边共用同一个 B 站 cookie（部署时 .env 一起推上去的），严格同一刻
+  // 同时扫等于同一账号瞬时双倍突发请求，抬高风控概率。错峰半步既保持「按北京时间
+  // 整刻度」的可预测性，又不撞车。
+  schedulePhaseMs: Number(process.env.SCHEDULE_PHASE_MS) || 0,
   // 参与路由的服务商（已剔除没配密钥的）与「渠道 → 服务商」表。
   // auth.js 直接用 route.get(type)，不再自己算，避免两处逻辑漂移。
   oauthProviders: oauth.usable,

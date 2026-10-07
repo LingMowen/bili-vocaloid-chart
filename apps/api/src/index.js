@@ -17,7 +17,7 @@ const evocalrank = require("./evocalrank");
 const boardIndex = require("./boardIndex");
 const refreshStats = require("./refreshStats");
 const syncIngest = require("./syncIngest");
-const { beijingClock, beijingHour, beijingParts, BEIJING_OFFSET_MS } = require("./beijingTime");
+const { beijingClock, beijingHour, beijingParts, msUntilAligned, BEIJING_OFFSET_MS } = require("./beijingTime");
 const { makeRouter: makeAuthRouter, requireAuth, publicUser } = require("./auth");
 const { db, stmts } = require("./db");
 
@@ -706,6 +706,36 @@ function scheduleDailyAt(hour, fn) {
     setInterval(fn, 24 * 3600 * 1000);
   }, delay);
   console.log(`[schedule] ${fn.name || "task"} 排程每天北京时间 ${hour}:00 执行（首跑延迟 ${Math.round(delay / 1000)}s）`);
+}
+
+// 对齐北京时间刻度的周期调度。
+// 为什么不用 setInterval：setInterval 从进程启动那一刻起算，本地与云端启动时间不同
+// -> 两边的「每 5 分钟」永久错开（用户 2026-10-07 指出：:05 扫过一次，下一次就该 :10）。
+// 这里每次执行完重新算「距下一个整刻度的延迟」，两边必然落在同一挂钟点；
+// 且一轮跑超时也只会顺延到下一个刻度，不会像 setInterval 那样累积补跑。
+function scheduleAligned(stepMs, fn, { label = fn.name || "task", firstDelayMs = 20 * 1000 } = {}) {
+  const phase = config.schedulePhaseMs;
+  let stopped = false;
+  const arm = (delay) => {
+    if (stopped) return;
+    setTimeout(() => {
+      if (stopped) return;
+      Promise.resolve()
+        .then(fn)
+        .catch((e) => console.error(`[schedule:aligned ${label}] 执行失败: ${e.message}`))
+        .finally(() => arm(msUntilAligned(stepMs, Date.now(), phase)));
+    }, delay);
+  };
+  // 启动后先按 firstDelayMs 跑一轮（让启动序列先完成），之后严格对齐刻度
+  arm(firstDelayMs);
+  console.log(
+    `[schedule] ${label} 对齐北京时间每 ${Math.round(stepMs / 60000)} 分钟整刻度执行${
+      phase ? `（错峰 +${Math.round(phase / 1000)}s）` : ""
+    }，下一轮 ${Math.round(msUntilAligned(stepMs, Date.now(), phase) / 1000)}s 后）`
+  );
+  return () => {
+    stopped = true;
+  };
 }
 
 // 全库派生数据（evostats/tags/girls/stats）低频后台刷新，失败保留旧缓存
@@ -1646,17 +1676,15 @@ app.listen(config.port, () => {
   setInterval(syncEvo, 24 * 3600 * 1000);
   // vocabili 日刊同步：每天凌晨 4 点定点抓取（日刊凌晨 3 点更新，4 点抓确保拿到新一期）
   scheduleDailyAt(4, syncVocabili);
-  // ---- 调度改造（m10418）----
+  // ---- 调度改造（m10418）+ 刻度对齐（用户 2026-10-07 口径）----
+  // 所有周期任务对齐北京时间整刻度：:00/:05/:10… 本地与云端在同一挂钟点扫描，
+  // 不再从各进程启动时刻起算（那样两边永久错开，同步差集被无谓拉大）。
   // 每 5 分钟：数据刷新 + 统分（只刷库内已有条目 stat/score，不新增收录）
-  setTimeout(() => scheduledStatRefresh(), 20 * 1000); // 启动 20s 后先跑一轮，避免与启动序列抢闸
-  setInterval(scheduledStatRefresh, 5 * 60 * 1000);
-  // 每 2 小时：收录 + 审核（collectAll 增量语义 + reviewPending 只消化待审项）
-  setTimeout(() => scheduledCollectAndReview(), 90 * 1000); // 首轮放在启动序列之后（1.5s 的 refreshLibrary 若命中新鲜库会秒回）
-  setInterval(scheduledCollectAndReview, 2 * 3600 * 1000);
-  // 每 10 分钟：新稿快速通道（只发现+收录库外最近投稿，秒级；与 collectAll 互斥）
-  // 首轮 60s 后跑：启动序列（wbi 初始化/派生刷新）之后，避免抢闸
-  setTimeout(() => scheduledQuickDiscover(), 60 * 1000);
-  setInterval(scheduledQuickDiscover, 10 * 60 * 1000);
+  scheduleAligned(5 * 60 * 1000, scheduledStatRefresh, { firstDelayMs: 20 * 1000 });
+  // 每 2 小时（整点刻度）：收录 + 审核（collectAll 增量语义 + reviewPending 只消化待审项）
+  scheduleAligned(2 * 3600 * 1000, scheduledCollectAndReview, { firstDelayMs: 90 * 1000 });
+  // 每 10 分钟：新稿快速通道（只发现+收录库外最近投稿；与 collectAll 互斥）
+  scheduleAligned(10 * 60 * 1000, scheduledQuickDiscover, { firstDelayMs: 60 * 1000 });
   // 启动独立后台 AI 审核 worker（解耦采集与审核：不阻塞采集、串行消化待审项）
   // AI_REVIEW_ENABLED=false 时不启动：此时 aiReview.check 走 fail-open 放行，且不请求上游
   if (config.aiReview.enabled) {
@@ -1674,8 +1702,10 @@ app.listen(config.port, () => {
   related.startRelatedWorker({ idleMs: 120000, batch: 8, limit: 300 }).catch((e) => {
     console.error("[related] worker 启动失败:", e.message);
   });
-  setInterval(refreshBoards, CACHE_TTL);
-  setInterval(refreshLibrary, 3600 * 1000);
+  // 榜单缓存与派生数据同样对齐整点：refreshLibrary 会触发 collectAll（收录扫描），
+  // 不锁刻度的话两边的小时级扫描点也会错开。
+  scheduleAligned(CACHE_TTL, refreshBoards, { label: "boards", firstDelayMs: CACHE_TTL });
+  scheduleAligned(3600 * 1000, refreshLibrary, { label: "library", firstDelayMs: 3600 * 1000 });
 });
 
 // 独立端口 1006：仅本地访问的进度页面
