@@ -115,4 +115,16 @@ function mergeSnapshot(dateKey, items) {
   return { ok: true, date: dateKey, added, updated, total: Object.keys(cur).length };
 }
 
-module.exports = { ingestLibrary, mergeSnapshot, pickNewer, MAX_ITEMS };
+// 读单日统计快照（对端拉取用）。文件本身是 { aid: {view,...} } 的扁平映射，
+// 体积 ~0.7MB/天，只允许按日整读，不提供全量打包（同步只拉近 7 天）。
+function readSnapshot(dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) return { ok: false, reason: "dateKey 非法" };
+  const file = path.join(statHistory.DAILY_DIR, `${dateKey}.json`);
+  try {
+    return { ok: true, data: JSON.parse(fs.readFileSync(file, "utf8")) };
+  } catch (e) {
+    return { ok: false, reason: "无该日快照" };
+  }
+}
+
+module.exports = { ingestLibrary, mergeSnapshot, readSnapshot, pickNewer, MAX_ITEMS };
