@@ -49,6 +49,13 @@ async function pullRound() {
   let man;
   try {
     man = await peerFetch(peer, "/api/sync/manifest", {}, PROBE_TIMEOUT_MS);
+    // 200 但结构异常也要防：peerFetch 只校验 HTTP 状态与 ok 字段，若对端返回
+    // {ok:true,data:{}}（如旧版本端点、重启瞬间的空响应），man.items 是 undefined，
+    // 直接 .map 会抛 TypeError 被外层兜成「同步失败」——实测云端出现过一次
+    // 「Cannot read properties of undefined (reading 'items')」。结构不符按 skip 处理。
+    if (!man || !Array.isArray(man.items)) {
+      return { ok: false, skipped: true, reason: "对端 manifest 结构异常，跳过同步", ms: Date.now() - started };
+    }
   } catch (e) {
     return { ok: false, skipped: true, reason: `对端不可达，跳过同步：${e.message}`, ms: Date.now() - started };
   }
