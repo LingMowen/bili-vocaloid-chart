@@ -1404,6 +1404,20 @@ app.get("/api/evostats", (req, res, next) => {
       sortVal = (it) => it.score ?? 0;
     }
     items = items.slice().sort((a, b) => (sortVal(b) - sortVal(a)) * (asc ? -1 : 1));
+    // 分页前给每条挂上上榜次数（_daily_count / _weekly_count）。
+    // 卡片右下角的角标内容随排序字段变化，按上榜次数排序时需要显示「N 次」，
+    // 所以在「按上榜次数排序」与「按其它字段排序但要显示次数」两种情况下都要带上。
+    const pageItems = items.slice((pn - 1) * ps, (pn - 1) * ps + ps);
+    if (order === "daily_count" || order === "weekly_count") {
+      const rs = boardRankStats(["daily", "weekly"]);
+      for (const it of pageItems) {
+        const st = rs.get(String(it.aid));
+        if (st) {
+          it._daily_count = st.daily.count;
+          it._weekly_count = st.weekly.count;
+        }
+      }
+    }
     return res.json({
       ok: true,
       data: {
@@ -1411,7 +1425,7 @@ app.get("/api/evostats", (req, res, next) => {
         asc,
         count: items.length,
         orders: d.orders || [],
-        list: items.slice((pn - 1) * ps, (pn - 1) * ps + ps),
+        list: pageItems,
       },
     });
   }

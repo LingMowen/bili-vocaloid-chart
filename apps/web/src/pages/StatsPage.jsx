@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { api, fmt } from "../api.js";
 import { qk } from "../queryKeys.js";
-import { RankRow } from "../components/RankCard.jsx";
+import SongCard from "../components/SongCard.jsx";
 import StatsFilter from "../components/StatsFilter.jsx";
 
 const METRICS = [
@@ -33,7 +33,7 @@ const ORDER_LABELS = [
   ["weekly_count", "byWeeklyCount"],
 ];
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 30; // 卡片网格：30 张约 6 行，比列表行更适合浏览
 
 export default function StatsPage() {
   const { t } = useTranslation();
@@ -245,23 +245,28 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* 结果列表 */}
-      <div className="grid gap-1 rounded-xl border bg-card p-1">
-        {isLoading && data.list.length === 0 ? (
-          <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">{t("stats.loading")}</div>
-        ) : data.list.length === 0 ? (
-          <div className="flex h-40 flex-col items-center justify-center gap-1 text-xs text-muted-foreground">
-            <span>{t("stats.noMatch")}</span>
-            <button type="button" onClick={reset} className="text-primary hover:underline">
-              {t("stats.resetFilters")}
-            </button>
-          </div>
-        ) : (
-          data.list.map((item, i) => (
-            <RankRow key={item.aid} item={item} rank={(page - 1) * PAGE_SIZE + i} />
-          ))
-        )}
-      </div>
+      {/* 结果卡片网格（对齐 vocabili /stats 的卡片样式） */}
+      {isLoading && data.list.length === 0 ? (
+        <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">{t("stats.loading")}</div>
+      ) : data.list.length === 0 ? (
+        <div className="flex h-40 flex-col items-center justify-center gap-1 text-xs text-muted-foreground">
+          <span>{t("stats.noMatch")}</span>
+          <button type="button" onClick={reset} className="text-primary hover:underline">
+            {t("stats.resetFilters")}
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {data.list.map((item, i) => (
+            <SongCard
+              key={item.aid}
+              item={item}
+              rank={(page - 1) * PAGE_SIZE + i + 1}
+              orderBy={order}
+            />
+          ))}
+        </div>
+      )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
