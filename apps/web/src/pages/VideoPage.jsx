@@ -183,7 +183,8 @@ function StatCard({ icon: Icon, label, value, sub, trend, highlight }) {
   );
 }
 
-function RankChart({ records, active, log, labels }) {
+// zoom：是否显示底部时间轴缩放滑块。主趋势图开，弹窗内的快照趋势图关（空间紧张、数据点少）。
+function RankChart({ records, active, log, labels, zoom = true }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
 
@@ -361,7 +362,9 @@ function RankChart({ records, active, log, labels }) {
     });
     c.setOption({
       animation: false,
-      grid: { left: 8, right: 8, top: 30, bottom: 40, containLabel: true },
+      // bottom 与 outerBoundsMode 对齐参考站：原站 grid.bottom = 34（单轴时）。
+      // dataZoom 只占 bottom: 10 一小块，轴标签仍由 containLabel 自动让位。
+      grid: { left: 8, right: 8, top: 30, bottom: 34, containLabel: true, outerBoundsMode: "same" },
       tooltip: {
         trigger: "axis",
         backgroundColor: "rgba(255,255,255,0.95)",
@@ -399,15 +402,21 @@ function RankChart({ records, active, log, labels }) {
         splitLine: { show: false },
       },
       yAxis,
-      // 参考站趋势图无底部缩放滑块，去掉 dataZoom
-      dataZoom: [],
+      // 底部时间轴滑块（2026-10-11 由 dataZoom: [] 改为开启）。
+      // 口径对齐参考站 vocabili（SongPage 的 dataZoom: [{ bottom: 10 }]）：
+      // 原站**只用 ECharts 默认样式**，只调 bottom，不覆盖任何配色 / handle / 背景。
+      // 之前版本自定义了紫色填充与描边，反而与原站观感不一致，故按原站口径回退。
+      // 注：默认样式自带缩略曲线、两侧 handle、中间平移柄，无需额外配置。
+      dataZoom: zoom ? [{ bottom: 10 }] : [],
       series,
       // 关键：必须 notMerge。setOption 默认是「合并」而非替换——取消勾选后 series/yAxis
       // 数组变短，旧的 series 不会被移除（表现为「取消不掉」），且 tooltip 里会残留
       // keys[seriesIndex] 为 undefined 的幽灵条目（灰色 #6b7280）。
     }, { notMerge: true });
-  }, [records, active, log, labels]);
+  }, [records, active, log, labels, zoom]);
 
+  // 容器高度与参考站一致（300px）。dataZoom 的 bottom:10 落在 grid.bottom:34 的留白内，
+  // 不需要额外加高——之前加到 336px 是我按「滑块要占位」估的，与原站不符。
   return <div ref={ref} className="relative my-4 h-[300px]" />;
 }
 
@@ -1471,6 +1480,7 @@ export default function VideoPage() {
                 active={["view", "favorite", "like"]}
                 log={false}
                 labels={chartLabels}
+                zoom={false}
               />
             </div>
           )}

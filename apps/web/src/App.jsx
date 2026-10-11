@@ -3,6 +3,7 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import AppHeader from "./components/AppHeader.jsx";
 import BottomTabBar from "./components/BottomTabBar.jsx";
+import BackToTop from "./components/BackToTop.jsx";
 import { SideNav, isSidebarRoute } from "./components/MobileNav.jsx";
 import LoadingOverlay, { Loader } from "./components/Loading.jsx";
 import { AuthProvider, AuthCallback } from "./auth.jsx";
@@ -59,7 +60,9 @@ export default function App() {
       <div className="flex h-dvh flex-col bg-muted/40 text-foreground">
         <AppHeader />
         {/* pb-14：为移动端底部固定 Tab 栏留出遮挡空间（md 以上底部栏不显示，留白归零） */}
-        <div className="min-h-0 flex-1 overflow-y-auto pb-14 md:pb-0">
+        {/* data-scroll-root：标记本站真正的滚动容器。html/body 是 overflow:hidden 的，
+            BackToTop 要滚动的是这个元素而不是 window，故用属性而不是 id 标记。 */}
+        <div data-scroll-root="true" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto pb-14 outline-none md:pb-0">
           {withSidebar ? (
             <div className="mx-auto flex max-w-[1440px] gap-0 px-2 pb-10 pt-4 xs:px-3 md:px-4 md:pb-16 md:pt-4 xl:gap-6 xl:pt-6">
               <aside className="hidden w-44 shrink-0 xl:block">
@@ -87,6 +90,7 @@ export default function App() {
           )}
         </div>
         <BottomTabBar />
+        <BackToTop />
         <LoadingOverlay />
       </div>
     </AuthProvider>

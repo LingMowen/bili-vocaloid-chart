@@ -16,5 +16,7 @@
   "chunkErrorTitle": "Failed to load page",
   "chunkErrorDesc": "A network or browser cache error broke a page resource. Reloading usually fixes it.",
   "reload": "Reload",
-  "backHome": "Back to home"
+  "backHome": "Back to home",
+  "backToTop": "Back to top",
+  "resetZoom": "Reset range"
 }

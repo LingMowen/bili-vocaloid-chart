@@ -16,5 +16,7 @@
   "chunkErrorTitle": "页面加载失败",
   "chunkErrorDesc": "网络或浏览器缓存异常导致页面资源加载失败，重新加载通常可以恢复。",
   "reload": "重新加载",
-  "backHome": "返回首页"
+  "backHome": "返回首页",
+  "backToTop": "回到顶部",
+  "resetZoom": "重置缩放区间"
 }
