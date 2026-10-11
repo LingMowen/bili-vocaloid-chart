@@ -85,6 +85,10 @@ _tmp/
 # 项目记忆库（本地专用：环境事实、决策理由、踩坑记录、待办）
 # 含服务器地址与运维细节，永不入库。详见 docs/memory/README.md
 /docs/memory/
+# Go 后端重写版（2026-11-11 起，本地开发，不入库）
+# 设计文档见 docs/memory/specs/go-backend-rewrite.md（也随 /docs/memory/ 一起忽略）
+# 现有 Node 后端 apps/api 仍在库，Go 版完成对账前不提交
+/apps/api-go/
 # 彩虹聚合登录官方 PHP 示例 SDK（第三方参考代码，与本项目 Node 后端无关）
 /SDK/
 # 一次性环境安装脚本（仅供本地使用，不入库）
