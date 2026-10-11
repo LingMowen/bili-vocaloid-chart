@@ -184,6 +184,47 @@ function StatCard({ icon: Icon, label, value, sub, trend, highlight }) {
 }
 
 // zoom：是否显示底部时间轴缩放滑块。主趋势图开，弹窗内的快照趋势图关（空间紧张、数据点少）。
+// 视频页数据未到达时的骨架占位。
+// 刻意不做旋转/脉冲动画 —— 加载指示由 App 的全屏 LoadingOverlay 统一呈现，
+// 这里再放一个动效就会与遮罩叠加成「两层加载动画」。
+const bar = "animate-pulse rounded bg-muted";
+function VideoSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl pb-12 pt-6">
+      <div className="w-full flex flex-col gap-4 lg:flex-row lg:items-start">
+        <div className="min-w-0 basis-0 grow space-y-4">
+          <div className="overflow-hidden rounded-2xl border bg-card">
+            <div className={`aspect-video w-full ${bar}`} />
+            <div className="space-y-3 p-4">
+              <div className={`h-6 w-3/4 ${bar}`} />
+              <div className={`h-4 w-1/3 ${bar}`} />
+              <div className={`h-4 w-1/2 ${bar}`} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="rounded-xl border bg-card p-3">
+                <div className={`h-3 w-1/2 ${bar}`} />
+                <div className={`mt-2 h-5 w-3/4 ${bar}`} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="w-full shrink-0 space-y-4 lg:w-80">
+          <div className="rounded-2xl border bg-card p-4">
+            <div className={`h-4 w-1/3 ${bar}`} />
+            <div className="mt-3 space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className={`h-8 w-full ${bar}`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RankChart({ records, active, log, labels, zoom = true }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
@@ -682,7 +723,11 @@ export default function VideoPage() {
   ];
 
   if (err) return <p className="mx-auto max-w-4xl py-10 text-destructive">{err}</p>;
-  if (!v) return <Loader className="py-24" label={t("video.loading")} />;
+  // 数据加载指示由 App 里的全屏 LoadingOverlay 统一负责（api.js 全局 track 包装）。
+  // 这里不再内联一个 Loader —— 否则点进视频页时会同时出现「路由 Suspense 骨架」+
+  // 「页面内 Loader」+「全屏遮罩」三层重叠的加载动画。
+  // 只留骨架占位，避免遮罩退去时页面一片空白。
+  if (!v) return <VideoSkeleton />;
 
   return (
     <div className="mx-auto max-w-7xl overflow-x-clip pb-12 pt-6 @container">
