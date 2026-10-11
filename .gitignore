@@ -82,6 +82,9 @@ _tmp/
 /docs/变更史.md
 /docs/云端部署运维手册.md
 /docs/scoring/
+# 项目记忆库（本地专用：环境事实、决策理由、踩坑记录、待办）
+# 含服务器地址与运维细节，永不入库。详见 docs/memory/README.md
+/docs/memory/
 # 彩虹聚合登录官方 PHP 示例 SDK（第三方参考代码，与本项目 Node 后端无关）
 /SDK/
 # 一次性环境安装脚本（仅供本地使用，不入库）
