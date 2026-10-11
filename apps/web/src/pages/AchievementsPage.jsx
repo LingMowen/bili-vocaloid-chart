@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api.js";
 import { qk } from "../queryKeys.js";
 import Modal from "../components/ui/Modal.jsx";
 import Tip from "../components/ui/Tip.jsx";
+import FilterSection from "../components/AchievementFilter.jsx";
 
 // 2026-09-29 起 1:1 对齐 vocabili 成就页结构：
 //   主 tab：周刊成就 | 日刊门番（不再提供 月榜/年榜 成就入口）
@@ -446,17 +447,56 @@ function useAchievements(params) {
   });
 }
 
-// 周刊成就：类型 tab + 描述头 + 卡片网格（与原 BoardMode 同构，类型集换为 vocabili 定义）
+// 筛选参数原样透传给后端（口径见 apps/api/src/achFilter.js）。
+// 只带已设置的非空项，空字段不拼进去，链接保持短。
+function filterParams(search) {
+  const p = new URLSearchParams(search || "");
+  const out = {};
+  for (const [k, v] of p.entries()) {
+    if (k === "board" || k === "type" || k === "page" || k === "page_size") continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+// 周刊成就：类型 tab + 筛选面板 + 描述头 + 卡片网格（与原 BoardMode 同构）
 function WeeklyBoard() {
   const { t } = useTranslation();
-  const [type, setType] = useState("emerging_hit");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterSearch = useMemo(() => {
+    // 把筛选相关参数原样拼回去（board/type/page 由页面自己管，不进 URL）
+    const p = new URLSearchParams();
+    for (const [k, v] of searchParams.entries()) {
+      if (k === "board" || k === "type" || k === "page" || k === "page_size") continue;
+      p.set(k, v);
+    }
+    return p.toString();
+  }, [searchParams]);
   const [page, setPage] = useState(1);
-  const { data, isLoading, error } = useAchievements({ board: "weekly", type, page, page_size: PAGE_SIZE });
+  const fp = useMemo(() => filterParams(filterSearch), [filterSearch]);
+  // type 也走 URL：默认 "weekly"（= 后端 type=all，返回全部类别），
+  // 这样筛选面板对所有类别生效，而不是只看某一个 tab 的结果。
+  const typeParam = searchParams.get("type") || "weekly";
+  const type = CATEGORIES.some((c) => c.key === typeParam) ? typeParam : "weekly";
+  const { data, isLoading, error } = useAchievements({
+    board: "weekly",
+    type: type === "weekly" ? "all" : type,
+    page,
+    page_size: PAGE_SIZE,
+    ...fp,
+  });
   const total = data?.total ?? 0;
   const items = data?.data ?? [];
   const cat = CATEGORIES.find((c) => c.key === type);
   const color = COLORS[type];
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  // 切类型：只改 URL 里的 type，保留已设的筛选条件
+  const switchType = (key) => {
+    const p = new URLSearchParams(searchParams);
+    p.set("type", key);
+    setSearchParams(p, { replace: true });
+    setPage(1);
+  };
   return (
     <>
       <div className="mb-4 flex gap-1 overflow-x-auto rounded-2xl border bg-card p-1.5 scrollbar-none xs:mb-6">
@@ -464,10 +504,7 @@ function WeeklyBoard() {
           <button
             key={c.key}
             type="button"
-            onClick={() => {
-              setType(c.key);
-              setPage(1);
-            }}
+            onClick={() => switchType(c.key)}
             className={`shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition ${
               type === c.key ? "text-white shadow-md" : "text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
@@ -476,6 +513,20 @@ function WeeklyBoard() {
             {t(c.label)}
           </button>
         ))}
+      </div>
+      {/* 筛选面板（口径对齐 vocabili FilterSection，本站不加赞助墙，功能全部直接可用） */}
+      <div className="mb-4 xs:mb-6">
+        <FilterSection
+          search={filterSearch}
+          matched={total}
+          onChange={(qs) => {
+            const p = new URLSearchParams();
+            p.set("type", type === "weekly" ? "all" : type);
+            for (const [k, v] of new URLSearchParams(qs).entries()) p.set(k, v);
+            setSearchParams(p, { replace: true });
+            setPage(1);
+          }}
+        />
       </div>
       <div className="mb-4 flex items-center justify-between rounded-xl border bg-card px-4 py-3 xs:mb-6">
         <div className="flex items-center gap-2.5 text-sm">

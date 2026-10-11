@@ -4,6 +4,7 @@ const evoStats = require("../evoStats");
 const viewTimeline = require("../viewTimeline");
 const biliranSync = require("../biliranSync");
 const boardIndex = require("../boardIndex");
+const achFilter = require("../achFilter");
 const { canonicalGirl, canonicalGirls } = require("../girls");
 const {
   ORDER_KEYS,
@@ -1452,6 +1453,12 @@ async function buildViewMilestoneAchievements(type) {
 }
 
 // opts: { board: 'weekly'|'daily'|'monthly'|'annual'|'all', type, status, page, pageSize }
+// 只在「有人要按数值筛」或「首条还没补过数值」时才去关联 library。
+// 纯浏览（不筛选、只看榜位）时跳过，省一次全库遍历。
+function needsStatFields(items) {
+  return !items.length || items.some((it) => it.view == null);
+}
+
 // board 传 "all" 时跨榜混排（对齐 vocabili 首页「成就速递」）；
 // type 传 "all"（或不传类别白名单外的值）时返回该榜全部达成项（含累计播放量三档）。
 async function achievements(opts = {}) {
@@ -1464,7 +1471,42 @@ async function achievements(opts = {}) {
   const result = await buildAchievementsByBoard(board, type);
   // 累计播放量三档与榜位无关，单独扫描后并入（同一首歌可能同时有榜位成就与播放量成就）
   const viewItems = await buildViewMilestoneAchievements(type);
-  const items = [...result.items, ...viewItems];
+  let items = [...result.items, ...viewItems];
+
+  // 补上库内数值（播放/收藏/硬币/点赞/弹幕/评论/分享/语言/发布时间）。
+  // 成就扫描只读榜单归档，归档里没有这些统计值；但筛选面板要按它们过滤
+  // （口径对齐参考站），所以这里从 library 关联一次。
+  // 缓存指纹随 library.ts 变，避免库刷新后仍用旧数值。
+  if (needsStatFields(items)) {
+    const lib = await loadLibrary();
+    const byAid = new Map();
+    for (const it of lib || []) byAid.set(String(it.aid), it);
+    for (const it of items) {
+      const lib1 = byAid.get(String(it.song_id ?? it.song?.aid));
+      if (!lib1) continue;
+      it.view = lib1.view || 0;
+      it.favorite = lib1.favorite || 0;
+      it.coin = lib1.coin || 0;
+      it.like = lib1.like || 0;
+      it.danmaku = lib1.danmaku || 0;
+      it.reply = lib1.reply || 0;
+      it.share = lib1.share || 0;
+      it.lang = lib1.lang || "";
+      it.pubdate = lib1.pubdate || 0;
+      // 歌曲类型 / 视频类型：库里没有显式字段时留空，由 achFilter 按标题与标签推断。
+      it.copyright = Number.isInteger(lib1.copyright) ? lib1.copyright : null;
+    }
+  }
+
+  // 成就页筛选（口径对齐参考站 vocabili FilterSection，本站不加赞助墙）。
+  // 筛选在分页之前做，所以 total 与页码都反映筛选后的真实结果集。
+  let filterApplied = false;
+  const filters = opts.filters || null;
+  if (achFilter.hasAnyFilter(filters)) {
+    items = items.filter((it) => achFilter.itemMatches(it, filters, board));
+    filterApplied = true;
+  }
+
   const total = items.length;
   return {
     board,
@@ -1475,6 +1517,7 @@ async function achievements(opts = {}) {
     has_gap: result.has_gap ?? false,
     categories: ACH_CATEGORIES.map((c) => ({ ...c, color: ACH_COLORS[c.key] || undefined })),
     total,
+    filter_applied: filterApplied,
     data: items.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
   };
 }

@@ -15,6 +15,7 @@ const related = require("./related");
 const evoStats = require("./evoStats");
 const evocalrank = require("./evocalrank");
 const boardIndex = require("./boardIndex");
+const achFilter = require("./achFilter");
 const refreshStats = require("./refreshStats");
 const syncIngest = require("./syncIngest");
 // syncRound 必须单独 require：scheduledCollectAndReview 调 syncRound.pullRound()，
@@ -1341,6 +1342,10 @@ app.get("/api/achievements", (req, res, next) => {
       status: String(req.query.status || "active"),
       page: Number(req.query.page) || 1,
       pageSize: Number(req.query.page_size) || 20,
+      // 筛选参数整体透传给 achFilter.parseFilters（口径见 achFilter.js 顶部注释）。
+      // 未设的字段解析为空，表示「不限」；原站是把筛选序列化进 query string 的，
+      // 这里保持一致，便于分享链接与原站对照。
+      filters: achFilter.parseFilters(req.query),
     });
     return { ok: true, data: d };
   });
