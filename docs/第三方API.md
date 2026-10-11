@@ -7,12 +7,12 @@
 
 | 第三方 | 用途 | 模块 | 鉴权 | 状态 |
 |---|---|---|---|---|
-| **B 站（bilibili）** | 视频数据、搜索、评论 | `bili.js`（`@aemeath-projects/bilibili` SDK） | Cookie（可选） | ✅ 主力数据源 |
-| **eVocalRank** | 周刊历史增量（2022-07 至今，220 期） | `evocalrank.js` / `evoStats.js` | 无 | ✅ 补数源 |
-| **biliran（cpk.moe）** | 周刊累计快照（2013~2022-08，405 期） | `biliranSync.js` | 无 | ✅ 补数源（缺 coin/like） |
-| **vocabili** | 日刊发现源（仅取 ID） | `vocabili.js` / `vocabiliSync.js` | 无 | ⚠️ 数值判死，仅限 ID 发现 |
-| **AI 审核（OpenAI 兼容）** | 内容合规审核 | `aiReview.js` | API Key | ✅ 可关闭（fail-open） |
-| **OAuth 登录** | 第三方账号登录 | `auth.js` / `config.js` | APPKEY | ✅（mapay / cccyun） |
+| **B 站（bilibili）** | 视频数据、搜索、评论 | `bili.js`（`@aemeath-projects/bilibili` SDK） | Cookie（可选） | 主力数据源 |
+| **eVocalRank** | 周刊历史增量（2022-07 至今，220 期） | `evocalrank.js` / `evoStats.js` | 无 | 补数源 |
+| **biliran（cpk.moe）** | 周刊累计快照（2013~2022-08，405 期） | `biliranSync.js` | 无 | 补数源（缺 coin/like） |
+| **vocabili** | 日刊发现源（仅取 ID） | `vocabili.js` / `vocabiliSync.js` | 无 | 注意：数值判死，仅限 ID 发现 |
+| **AI 审核（OpenAI 兼容）** | 内容合规审核 | `aiReview.js` | API Key | 可关闭（fail-open） |
+| **OAuth 登录** | 第三方账号登录 | `auth.js` / `config.js` | APPKEY | 通过 （mapay / cccyun） |
 
 ---
 
@@ -101,7 +101,7 @@
 
 **board 映射**：`daily→vocaloid-daily`、`weekly→vocaloid-weekly`、`monthly→vocaloid-monthly`、`annual→vocaloid-annual`
 
-**⚠️ 重要限制（实测）**：
+**注意：重要限制（实测）**：
 1. **历史期号不生效** —— 传任何 issue 都返回**最新一期**（返回条目 issue 字段恒为 latest）。不能按 1..latest 批量遍历（会重复抓同一份）。
 2. **数值判死，不可用于计分**：相邻期差分大量为负（累计/增量语义都不成立）、与本站真实日增量差 7~8 倍（80 组对比仅 2 组吻合）、自身窗口口径不明。
 3. 历史期相关接口（如 milestones）返回 401 需登录。

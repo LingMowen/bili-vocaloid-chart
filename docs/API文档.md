@@ -20,7 +20,7 @@
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `kind` | ✅ | 路径参数，`cn` / `intl` / `all`（中文榜/其他语言榜/综合榜） |
+| `kind` | 通过 | 路径参数，`cn` / `intl` / `all`（中文榜/其他语言榜/综合榜） |
 | `period` | | `daily` / `weekly` / `monthly` / `annual`，默认 `daily` |
 | `issue` | | 期号，默认最新期 |
 | `pn` / `ps` | | 页码/每页条数，`pn` 1-100，`ps` 1-50（超限报 400） |
@@ -159,7 +159,7 @@ evo_periods, evo_start, evo_end, avg_days`
 
   实测（`type=myth` 26 首）：`exact` 2 首、`before/chart-accum` 5 首、`before/stat_daily` 19 首。其中《人是猫》BV1Bfjq6LEDi 首次被观测到破千万的日期为 **2026-10-04**（10-03 快照 9,948,877 → 10-04 快照 10,070,281），与人工核实一致。
 
-  ⚠️ 已确认的取值陷阱：`viewTimeline` 的 aid 键是 number，快照 `Object.keys()` 的键是 string。若叠加时用 number 键 `Map.set`，会多出一条与快照记录并存的孤儿记录，查询 `Map.get(Number(aid))` 命中它并短路，导致「三档里榜单没覆盖的那一档」被误判成 `after`。叠加与查询两侧都必须统一 `String(aid)`。
+  注意：已确认的取值陷阱：`viewTimeline` 的 aid 键是 number，快照 `Object.keys()` 的键是 string。若叠加时用 number 键 `Map.set`，会多出一条与快照记录并存的孤儿记录，查询 `Map.get(Number(aid))` 命中它并短路，导致「三档里榜单没覆盖的那一档」被误判成 `after`。叠加与查询两侧都必须统一 `String(aid)`。
 - `periods_available` / `has_gap` 仅对榜位类有意义。
 
 ---
@@ -175,7 +175,7 @@ evo_periods, evo_start, evo_end, avg_days`
 
 **`refresh` 状态对象**：`{ running, total, targets, done, errors, startedAt, updatedAt, snapshot, ms, endedAt, truncated }`
 
-> ⚠️ PowerShell 里 `curl -d '{"force":true}'` 单引号会被吞成非法 JSON → 500。改用 node/Postman 发请求。
+> 注意：PowerShell 里 `curl -d '{"force":true}'` 单引号会被吞成非法 JSON → 500。改用 node/Postman 发请求。
 
 ---
 
