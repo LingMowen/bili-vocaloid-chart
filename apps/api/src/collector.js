@@ -419,8 +419,15 @@ async function buildItem(client, sdk, aid, it) {
   // 歌曲证据
   if (!hasSongEvidence(title, tagNames, desc)) return reject("缺歌曲证据（标题/标签/简介均无原创·翻唱·歌词等信号）");
 
+  // 时长门槛：2026-10-11 由 120s 降至 60s（用户决定）。
+  // 起因：BV15GmhBaEZF（I Can't Wait feat. GUMI，95 秒、2693 万播放、完整 staff）
+  // 被 120s 门槛误杀。抽样 200 个候选实测 <120s 占 18%，
+  // 其中确有完整作品（如「【星尘】原创《短暂》」114s），也有玩梗切片（「我要便便啦」57s）。
+  // 降到 60s 是用户权衡后的选择：先解决完整短曲被误杀，玩梗内容由其余规则兜底
+  // （歌曲证据 hasSongEvidence / 标签证据 tagHit / 强黑名单 hardHit 等）。
+  const MIN_DURATION = 60;
   const duration = Number(data.duration) || 0;
-  if (duration < 120) return reject(`时长不足 120s（${duration}s）`);
+  if (duration < MIN_DURATION) return reject(`时长不足 ${MIN_DURATION}s（${duration}s）`);
 
   const stat = {
     view: data.stat?.view || 0,
