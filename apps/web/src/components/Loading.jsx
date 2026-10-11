@@ -97,8 +97,11 @@ export default function LoadingOverlay() {
   if (s === "hidden") return null;
   const fading = s === "leaving";
   return (
+    // 只覆盖顶栏下方的内容区（top-14 = 顶栏高度 56px），顶栏保持可见可交互。
+    // 原先是 fixed inset-0，从视口顶部 0 开始把顶栏也盖住了，
+    // 加载时导航/搜索/登录全部点不到，观感上像整个应用卡死。
     <div
-      className={`fixed inset-0 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm transition-opacity duration-200 ${
+      className={`fixed inset-x-0 bottom-0 top-14 z-[100] flex items-center justify-center bg-background/60 backdrop-blur-sm transition-opacity duration-200 ${
         fading ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
     >
