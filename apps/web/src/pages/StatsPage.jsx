@@ -44,15 +44,14 @@ export default function StatsPage() {
   const [page, setPage] = useState(1);
 
   // 筛选面板（对齐 vocabili /stats 的 FilterSection，本站不加赞助墙）
-  // 面板序列化的是 view_ranges 这类区间串，而后端 /api/evostats 原生认 min_/max_，
-  // 两边在这里转换；上榜次数、名次、发布时间、歌曲类型等直接透传。
+  // 面板把状态序列化进 URL（view_ranges 这类区间串），回显时读回同一份串；
+  // 发请求时才转成后端 /api/evostats 原生认的 min_/max_（见下面的 query）。
+  // 注意 filterSearch 必须是 URL 的全量筛选参数 —— 少传会让下拉框无法回显。
   const filterSearch = useMemo(() => {
     const p = new URLSearchParams();
     for (const [k, v] of searchParams.entries()) {
-      if (k === "view_ranges" || k === "favorite_ranges" || k === "coin_ranges" ||
-          k === "like_ranges" || k === "danmaku_ranges" || k === "reply_ranges" || k === "share_ranges") {
-        continue; // 这几个由下面转成 min_/max_
-      }
+      if (k === "pn" || k === "ps" || k === "order" || k === "asc" ||
+          k === "keyword" || k === "girl" || k === "page" || k === "page_size") continue;
       p.set(k, v);
     }
     return p.toString();

@@ -276,15 +276,22 @@ export default function StatsFilter({ search, onChange, matched }) {
           {matched != null && (
             <span className="text-xs text-muted-foreground">{t("stats.stats_filter_matched", { n: matched })}</span>
           )}
-          {activeCount > 0 && (
-            <button
-              type="button"
-              onClick={() => onChange("")}
-              className="rounded-lg border border-border px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
-            >
-              {t("stats.stats_filter_resetAll")}
-            </button>
-          )}
+          {/* 「清除全部」常驻，用 invisible 占位而不是条件渲染：
+              条件渲染会让按钮在首次筛选时突然插入，标题行高度变化把整页顶下去，
+              视觉上像页面「动了一下」。保持节点在 DOM 里、只切可见性即可高度恒定。 */}
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            disabled={activeCount === 0}
+            tabIndex={activeCount === 0 ? -1 : 0}
+            className={`rounded-lg border border-border px-2 py-1 text-[11px] transition ${
+              activeCount > 0
+                ? "text-muted-foreground hover:bg-accent hover:text-foreground"
+                : "invisible pointer-events-none"
+            }`}
+          >
+            {t("stats.stats_filter_resetAll")}
+          </button>
         </div>
       </div>
 
