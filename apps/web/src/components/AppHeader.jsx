@@ -231,11 +231,8 @@ export default function AppHeader() {
             {({ isActive }) => (
               <>
                 {t("nav.home")}
-                <span
-                  className={`absolute inset-x-2.5 -bottom-0.5 h-0.5 rounded-full bg-primary transition-opacity ${
-                    isActive ? "opacity-100" : "opacity-0"
-                  }`}
-                />
+                {/* 导航激活态下划线：2026-10-11 用户要求去掉（顶栏/导航/首页/工具等
+                    文字下方那条横线）。当前项改用文字颜色区分，不再有下划线。 */}
               </>
             )}
           </NavLink>
@@ -266,11 +263,7 @@ export default function AppHeader() {
                     }`}
                   />
                 </button>
-                <span
-                  className={`pointer-events-none absolute inset-x-2.5 -bottom-0.5 h-0.5 rounded-full bg-primary transition-opacity ${
-                    parentActive(item.children) ? "opacity-100" : "opacity-0"
-                  }`}
-                />
+                {/* 下拉父项（排行 / 工具等）的激活态下划线一并去掉，见上方首页项的说明 */}
                 {dropdown === item.labelKey && (
                   <div className="absolute left-0 top-full z-50 mt-2 min-w-40 rounded-xl border bg-popover/95 p-1.5 shadow-lg backdrop-blur">
                     {item.children.map(([to, labelKey]) => {
@@ -309,11 +302,7 @@ export default function AppHeader() {
                 {({ isActive }) => (
                   <>
                     {t(item.labelKey)}
-                    <span
-                      className={`absolute inset-x-2.5 -bottom-0.5 h-0.5 rounded-full bg-primary transition-opacity ${
-                        isActive ? "opacity-100" : "opacity-0"
-                      }`}
-                    />
+                    {/* 激活态下划线去掉，见上方首页项的说明 */}
                   </>
                 )}
               </NavLink>
