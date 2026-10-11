@@ -187,14 +187,15 @@ async function buildBoard(period, issue) {
   const curWin = windowOf(period, nowDate);
   const items = await loadLibrary();
 
-  // 全库最早 pubdate 所在窗口作为第 1 期基准。
-  // 年刊例外：期号按自然年语义编号 —— 2025=第1期、2026=第2期……（数据起点固定为2025年）
+  // 全库最早 pubdate 所在窗口作为第 1 期基准。四类周期统一口径。
+  // 年刊此前硬编码起点为 2025（写死 `new Date(2025, 0, 1)`），导致年榜只有 2 期、
+  // 名次类成就（需连续 3~5 期）必然为 0。库里最早 pubdate 是 2010-02-14，
+  // 且每年都有数据（2010 年 5 首起，逐年递增至 2026 年 7300+ 首），
+  // 故改为与其余三类一致：以全库最早 pubdate 所在年为首期。
   const pubs = items.map((it) => it.pubdate).filter(Boolean);
-  const baseWin = period === "annual"
-    ? windowOf("annual", new Date(2025, 0, 1))
-    : pubs.length
-      ? windowOf(period, new Date(Math.min(...pubs) * 1000))
-      : curWin;
+  const baseWin = pubs.length
+    ? windowOf(period, new Date(Math.min(...pubs) * 1000))
+    : curWin;
   // 当前（最新）期号：从 baseWin 往后推（未来），直到窗口起点 >= curWin 起点
   const latestIssue = (() => {
     let s = 0;
