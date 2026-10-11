@@ -1288,14 +1288,21 @@ async function scanBoardAchievements(board) {
     }
   }
   items.sort((a, b) => Number(a.achieved_issue) - Number(b.achieved_issue));
-  // periods_available / has_gap：本站该榜可用历史期数，以及历史是否存在断档。
-  // 连续型成就（Emerging Hit! 需 3 期、Mega Hit!!! 需 5 期）在期数不足或历史断档时必然为 0，
+  // periods_available / has_gap：本站该榜可用历史期数，以及**成就判定窗口内**是否存在断档。
+  // 连续型成就（Emerging Hit! 需 3 期、Mega Hit!!! 需 5 期）在期数不足或窗口内断档时必然为 0，
   // 前端据此区分「数据不足」与「确实无人达成」，避免用户以为页面坏了。
+  //
+  // 判据只看最近 GAP_SCAN 期（= 最大成就窗口 30 期），不扫全史：
+  // 期号体系是「从全库最早窗口起递增」，早期（2010 年代）库里没有新增歌的日子会缺期，
+  // 那是真实的数据稀疏而非断档，扫全史会把 has_gap 永久置 true，让前端一直提示
+  // 「历史断档」——而成就实际只判最近窗口，那个区间是连续的。
   const pd = periodDaysOf(board);
+  const GAP_SCAN = 30;
+  const gapScope = merged.slice(-GAP_SCAN);
   let hasGap = false;
-  for (let i = 1; i < merged.length; i++) {
-    const a = Date.parse(merged[i - 1].date_start || "");
-    const b = Date.parse(merged[i].date_start || "");
+  for (let i = 1; i < gapScope.length; i++) {
+    const a = Date.parse(gapScope[i - 1].date_start || "");
+    const b = Date.parse(gapScope[i].date_start || "");
     if (!isNaN(a) && !isNaN(b) && (b - a) / 86400000 > pd * 1.6) {
       hasGap = true;
       break;
