@@ -497,10 +497,12 @@ export default function RankPage() {
         </div>
 
         <aside className="hidden lg:block">
-          {/* 2026-09-30：top-20 会把侧栏初始位置强推到滚动容器顶部下方 80px（我们头部固定、
-              内容区独立滚动，自然位置只有 ~16px），导致侧栏比主内容标题卡低 ~56px。
-              改 top-4 与原站视觉一致：初始对齐标题卡，滚动后吸附在头部正下方。 */}
-          <div className="sticky top-4 max-h-[calc(100vh-6.5rem)] space-y-4 overflow-y-auto pr-1">
+          {/* 2026-10-11：移除侧栏自身的滚动条。
+              原来是 max-h-[calc(100vh-6.5rem)] + overflow-y-auto，侧栏内容超出时
+              会在栏内出现第二条滚动条（与页面主滚动并存，观感割裂）。
+              改为 sticky 定位但不做内部滚动 —— 侧栏整体跟随页面主滚动，
+              高度不足时内容自然延伸，与原站一致。 */}
+          <div className="sticky top-4 space-y-4 pr-1">
             <div className="overflow-hidden rounded-2xl border bg-card">
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
