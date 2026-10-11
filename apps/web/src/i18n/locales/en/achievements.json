@@ -1,18 +1,44 @@
 {
-  "title": "Achievements",
   "desc": "Permanent achievements computed from chart history",
   "tabWeekly": "Weekly achievements",
   "tabDaily": "Daily gatekeepers",
   "cat": {
-    "emerging_hit": { "label": "Emerging Hit!", "desc": "Top 5 of the main chart for 3 consecutive issues" },
-    "mega_hit": { "label": "Mega Hit!!!", "desc": "Top 3 of the main chart for 5 consecutive issues" },
-    "potential_regular": { "label": "Gatekeeper candidate", "desc": "10 of the last 15 issues in the top 20" },
-    "regular": { "label": "Gatekeeper", "desc": "20 of the last 30 issues in the top 20" },
-    "daily_regular": { "label": "Daily gatekeeper", "desc": "20 of the last 30 issues in the top 20" },
-    "daily_potential_regular": { "label": "Daily gatekeeper candidate", "desc": "10 of the last 15 issues in the top 20" },
-    "hall_of_fame": { "label": "Hall of Fame", "desc": "100,000+ total views" },
-    "legend": { "label": "Legend", "desc": "1,000,000+ total views" },
-    "myth": { "label": "Myth", "desc": "10,000,000+ total views" }
+    "emerging_hit": {
+      "label": "Emerging Hit!",
+      "desc": "Top 5 of the main chart for 3 consecutive issues"
+    },
+    "mega_hit": {
+      "label": "Mega Hit!!!",
+      "desc": "Top 3 of the main chart for 5 consecutive issues"
+    },
+    "potential_regular": {
+      "label": "Gatekeeper candidate",
+      "desc": "10 of the last 15 issues in the top 20"
+    },
+    "regular": {
+      "label": "Gatekeeper",
+      "desc": "20 of the last 30 issues in the top 20"
+    },
+    "daily_regular": {
+      "label": "Daily gatekeeper",
+      "desc": "20 of the last 30 issues in the top 20"
+    },
+    "daily_potential_regular": {
+      "label": "Daily gatekeeper candidate",
+      "desc": "10 of the last 15 issues in the top 20"
+    },
+    "hall_of_fame": {
+      "label": "Hall of Fame",
+      "desc": "100,000+ total views"
+    },
+    "legend": {
+      "label": "Legend",
+      "desc": "1,000,000+ total views"
+    },
+    "myth": {
+      "label": "Myth",
+      "desc": "10,000,000+ total views"
+    }
   },
   "dailyRegularTitle": "Current gatekeepers",
   "dailyCandidateTitle": "Current gatekeeper candidates",

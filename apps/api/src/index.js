@@ -1249,6 +1249,52 @@ app.get("/api/random", (req, res, next) => {
     };
   });
 });
+// 从 board_archive 统计每首歌的上榜次数与最佳名次（供「日刊/周刊上榜」筛选）。
+// 结果按 aid 缓存，文件 mtime 变化即失效（归档是每日增长的）。
+const _rankStatsCache = { fp: "", data: null };
+function boardRankStats(boards) {
+  const dirs = boards.map((b) => path.join(CACHE_DIR, "board_archive", b));
+  const fp = dirs.map((d) => {
+    try { return `${d}:${fs.statSync(d).mtimeMs}`; } catch (e) { return `${d}:0`; }
+  }).join("||");
+  if (_rankStatsCache.fp === fp && _rankStatsCache.data) return _rankStatsCache.data;
+  const out = new Map();
+  for (const b of boards) {
+    const dir = path.join(CACHE_DIR, "board_archive", b);
+    let files = [];
+    try { files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")); } catch (e) { continue; }
+    // 同一期可能有多个归档文件（如历史回填与每日快照并存），按期号只取一份
+    for (const f of files) {
+      let d = null;
+      try { d = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); } catch (e) { continue; }
+      if (!d || !Array.isArray(d.list)) continue;
+      for (const it of d.list) {
+        const aid = String(it.aid);
+        let rec = out.get(aid);
+        if (!rec) {
+          rec = { daily: { count: 0, best: null }, weekly: { count: 0, best: null } };
+          out.set(aid, rec);
+        }
+        const seen = (rec[b]._issues || (rec[b]._issues = new Set()));
+        const iss = String(d.issue);
+        if (seen.has(iss)) continue; // 同期去重
+        seen.add(iss);
+        const rank = Number(it.score_rank);
+        if (!Number.isFinite(rank) || rank < 1) continue;
+        rec[b].count++;
+        if (rec[b].best == null || rank < rec[b].best) rec[b].best = rank;
+      }
+    }
+  }
+  // 清掉内部用的 Set，避免随缓存长期驻留
+  for (const rec of out.values()) {
+    for (const b of boards) if (rec[b] && rec[b]._issues) delete rec[b]._issues;
+  }
+  _rankStatsCache.fp = fp;
+  _rankStatsCache.data = out;
+  return out;
+}
+
 app.get("/api/evostats", (req, res, next) => {
   const d = readCached("evostats.json");
   if (d && Array.isArray(d.list)) {
@@ -1277,6 +1323,55 @@ app.get("/api/evostats", (req, res, next) => {
       items = items.filter((it) => canonicalGirls(it.girls || []).some((g) => want.has(g)));
     }
     if (lang) items = items.filter((it) => String(it.lang || "") === lang);
+
+    // 榜单档案：用于「日刊上榜 / 周刊上榜 / 发布」三类筛选（原站统计页筛选项）。
+    // 数据源是 cache/board_archive/{daily,weekly}，即历史上榜记录。
+    const needRank = req.query.daily_count_ranges || req.query.weekly_count_ranges ||
+      req.query.daily_rank || req.query.weekly_rank || req.query.pubdate;
+    if (needRank) {
+      const want = achFilter.parseFilters(req.query);
+      const libByAid = new Map();
+      if (want.pubdateRanges) {
+        for (const it of items) libByAid.set(String(it.aid), it);
+      }
+      const stats = boardRankStats(["daily", "weekly"]);
+      items = items.filter((it) => {
+        const aid = String(it.aid);
+        const st = stats.get(aid) || { daily: { count: 0, best: null }, weekly: { count: 0, best: null } };
+        for (const key of ["daily_count_ranges", "weekly_count_ranges"]) {
+          const list = want.ranges[key];
+          if (list && list.length) {
+            const n = key.startsWith("daily") ? st.daily.count : st.weekly.count;
+            const ok = list.some((r) => (r.min == null || n >= r.min) && (r.max == null || n <= r.max));
+            if (!ok) return false;
+          }
+        }
+        if (want.dailyRank != null && !(st.daily.best != null && st.daily.best <= want.dailyRank)) return false;
+        if (want.weeklyRank != null && !(st.weekly.best != null && st.weekly.best <= want.weeklyRank)) return false;
+        if (want.pubdateRanges && want.pubdateRanges.length) {
+          const src = libByAid.get(aid);
+          if (!src || !achFilter.matchPubdate({ pubdate: src.pubdate }, want.pubdateRanges)) return false;
+        }
+        return true;
+      });
+    }
+
+    // 歌曲类型 / 视频类型 / 仅外语曲（口径见 achFilter.js）
+    const typeFilters = achFilter.parseFilters(req.query);
+    const hasTypeFilter =
+      typeFilters.types.length > 0 || typeFilters.copyright.length > 0 || typeFilters.foreign;
+    if (hasTypeFilter) {
+      items = items.filter((it) => {
+        // evostats 列表项与成就 item 结构不同，这里包一层适配 achFilter.itemMatches
+        const wrapped = { song_id: it.aid, view: it.view, favorite: it.favorite, coin: it.coin,
+          like: it.like, danmaku: it.danmaku, reply: it.reply, share: it.share,
+          lang: it.lang, pubdate: it.pubdate, song: it };
+        if (typeFilters.foreign && String(it.lang || "") === "zh") return false;
+        if (typeFilters.copyright.length && !achFilter.matchCopyright(wrapped, typeFilters.copyright)) return false;
+        if (typeFilters.types.length && !achFilter.matchTypes(wrapped, typeFilters.types)) return false;
+        return true;
+      });
+    }
     for (const k of METRICS) {
       const mn = Number(req.query["min_" + k]);
       const mx = Number(req.query["max_" + k]);

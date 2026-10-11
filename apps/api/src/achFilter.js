@@ -335,4 +335,8 @@ module.exports = {
   parseFilters,
   hasAnyFilter,
   itemMatches,
+  // 单项判定：统计页（/api/evostats）复用这几项，不走 itemMatches 的完整链路
+  matchTypes,
+  matchCopyright,
+  matchPubdate,
 };

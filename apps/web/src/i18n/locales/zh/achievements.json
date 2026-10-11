@@ -1,18 +1,44 @@
 {
-  "title": "成就",
   "desc": "基于榜单历史数据实时计算的永久成就",
   "tabWeekly": "周刊成就",
   "tabDaily": "日刊门番",
   "cat": {
-    "emerging_hit": { "label": "Emerging Hit!", "desc": "连续 3 期主榜前 5 名" },
-    "mega_hit": { "label": "Mega Hit!!!", "desc": "连续 5 期主榜前 3 名" },
-    "potential_regular": { "label": "门番候补", "desc": "15 期内有 10 期在前 20 名" },
-    "regular": { "label": "门番", "desc": "30 期内有 20 期在前 20 名" },
-    "daily_regular": { "label": "日刊门番", "desc": "30 期内有 20 期在前 20 名" },
-    "daily_potential_regular": { "label": "日刊门番候补", "desc": "15 期内有 10 期在前 20 名" },
-    "hall_of_fame": { "label": "殿堂曲", "desc": "累计播放量 ≥ 10 万" },
-    "legend": { "label": "传说曲", "desc": "累计播放量 ≥ 100 万" },
-    "myth": { "label": "神话曲", "desc": "累计播放量 ≥ 1000 万" }
+    "emerging_hit": {
+      "label": "Emerging Hit!",
+      "desc": "连续 3 期主榜前 5 名"
+    },
+    "mega_hit": {
+      "label": "Mega Hit!!!",
+      "desc": "连续 5 期主榜前 3 名"
+    },
+    "potential_regular": {
+      "label": "门番候补",
+      "desc": "15 期内有 10 期在前 20 名"
+    },
+    "regular": {
+      "label": "门番",
+      "desc": "30 期内有 20 期在前 20 名"
+    },
+    "daily_regular": {
+      "label": "日刊门番",
+      "desc": "30 期内有 20 期在前 20 名"
+    },
+    "daily_potential_regular": {
+      "label": "日刊门番候补",
+      "desc": "15 期内有 10 期在前 20 名"
+    },
+    "hall_of_fame": {
+      "label": "殿堂曲",
+      "desc": "累计播放量 ≥ 10 万"
+    },
+    "legend": {
+      "label": "传说曲",
+      "desc": "累计播放量 ≥ 100 万"
+    },
+    "myth": {
+      "label": "神话曲",
+      "desc": "累计播放量 ≥ 1000 万"
+    }
   },
   "dailyRegularTitle": "当前门番",
   "dailyCandidateTitle": "当前门番候补",

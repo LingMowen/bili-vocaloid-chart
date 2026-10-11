@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { api, fmt } from "../api.js";
@@ -6,6 +7,7 @@ import { qk } from "../queryKeys.js";
 import { RankRow } from "../components/RankCard.jsx";
 import SelectField, { SelectItem } from "../components/ui/SelectField.jsx";
 import Tip from "../components/ui/Tip.jsx";
+import StatsFilter from "../components/StatsFilter.jsx";
 
 const METRICS = [
   ["view", "view"],
@@ -16,58 +18,6 @@ const METRICS = [
   ["reply", "reply"],
   ["share", "share"],
 ];
-
-const BANDS = {
-  view: [
-    { label: "bandView1000w", min: 1e7 },
-    { label: "bandView100w", min: 1e6 },
-    { label: "bandView10w", min: 1e5 },
-    { label: "bandView1w", min: 1e4 },
-    { label: "bandBelow1w", max: 1e4 },
-  ],
-  favorite: [
-    { label: "band100w", min: 1e6 },
-    { label: "band10w", min: 1e5 },
-    { label: "band1w", min: 1e4 },
-    { label: "band1000", min: 1e3 },
-    { label: "bandBelow1000", max: 1e3 },
-  ],
-  coin: [
-    { label: "band100w", min: 1e6 },
-    { label: "band10w", min: 1e5 },
-    { label: "band1w", min: 1e4 },
-    { label: "band1000", min: 1e3 },
-    { label: "bandBelow1000", max: 1e3 },
-  ],
-  like: [
-    { label: "band100w", min: 1e6 },
-    { label: "band10w", min: 1e5 },
-    { label: "band1w", min: 1e4 },
-    { label: "band1000", min: 1e3 },
-    { label: "bandBelow1000", max: 1e3 },
-  ],
-  danmaku: [
-    { label: "band100", min: 100 },
-    { label: "band50", min: 50 },
-    { label: "band20", min: 20 },
-    { label: "band10", min: 10 },
-    { label: "band1", min: 1 },
-  ],
-  reply: [
-    { label: "band100", min: 100 },
-    { label: "band50", min: 50 },
-    { label: "band20", min: 20 },
-    { label: "band10", min: 10 },
-    { label: "band1", min: 1 },
-  ],
-  share: [
-    { label: "band100", min: 100 },
-    { label: "band50", min: 50 },
-    { label: "band20", min: 20 },
-    { label: "band10", min: 10 },
-    { label: "band1", min: 1 },
-  ],
-};
 
 const ORDER_LABELS = [
   ["score", "byScore"],
@@ -84,6 +34,7 @@ const PAGE_SIZE = 20;
 
 export default function StatsPage() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [order, setOrder] = useState("score");
   const [asc, setAsc] = useState(false);
   const [keyword, setKeyword] = useState("");
@@ -91,6 +42,35 @@ export default function StatsPage() {
   const [girl, setGirl] = useState("");
   const [ranges, setRanges] = useState({});
   const [page, setPage] = useState(1);
+
+  // 筛选面板（对齐 vocabili /stats 的 FilterSection，本站不加赞助墙）
+  // 面板序列化的是 view_ranges 这类区间串，而后端 /api/evostats 原生认 min_/max_，
+  // 两边在这里转换；上榜次数、名次、发布时间、歌曲类型等直接透传。
+  const filterSearch = useMemo(() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of searchParams.entries()) {
+      if (k === "view_ranges" || k === "favorite_ranges" || k === "coin_ranges" ||
+          k === "like_ranges" || k === "danmaku_ranges" || k === "reply_ranges" || k === "share_ranges") {
+        continue; // 这几个由下面转成 min_/max_
+      }
+      p.set(k, v);
+    }
+    return p.toString();
+  }, [searchParams]);
+
+  const setFilterSearch = useCallback(
+    (qs) => {
+      const p = new URLSearchParams(searchParams);
+      for (const key of Array.from(p.keys())) {
+        if (key.endsWith("_ranges") || ["daily_rank", "weekly_rank", "pubdate", "types", "copyright", "foreign", "daily_count_ranges", "weekly_count_ranges"].includes(key)) {
+          p.delete(key);
+        }
+      }
+      for (const [k, v] of new URLSearchParams(qs).entries()) p.set(k, v);
+      setSearchParams(p, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const query = useMemo(() => {
     const q = new URLSearchParams({
@@ -108,28 +88,30 @@ export default function StatsPage() {
         if (b.max != null) q.set("max_" + k, String(b.max));
       }
     }
+    // 面板筛选：区间串转 min_/max_，其余透传
+    const fs = new URLSearchParams(filterSearch);
+    for (const key of Array.from(fs.keys())) {
+      if (key.endsWith("_ranges") && !key.includes("count")) {
+        const metric = key.slice(0, -7); // 去掉 "_ranges"
+        for (const seg of fs.get(key).split(",").map((s) => s.trim()).filter(Boolean)) {
+          const i = seg.indexOf("-");
+          const lo = i === -1 ? seg : seg.slice(0, i);
+          const hi = i === -1 ? "" : seg.slice(i + 1);
+          if (lo !== "") q.set("min_" + metric, lo);
+          if (hi !== "") q.set("max_" + metric, hi);
+        }
+      } else {
+        q.set(key, fs.get(key));
+      }
+    }
     return q.toString();
-  }, [page, order, asc, keyword, girl, ranges]);
+  }, [page, order, asc, keyword, girl, ranges, filterSearch]);
 
   const { data = { list: [], count: 0 }, isLoading, error } = useQuery({
     queryKey: qk.evostats({ query }),
     queryFn: () => api(`/api/evostats?${query}`, { silent: true }),
     select: (d) => ({ list: d.list || [], count: d.count || 0 }),
   });
-
-  function cycleBand(k) {
-    setRanges((prev) => {
-      const cur = prev[k];
-      if (!cur) return { ...prev, [k]: BANDS[k][0] };
-      const idx = BANDS[k].indexOf(cur);
-      const next = BANDS[k][(idx + 1) % BANDS[k].length];
-      const copy = { ...prev };
-      if (idx === BANDS[k].length - 1) delete copy[k];
-      else copy[k] = next;
-      return copy;
-    });
-    setPage(1);
-  }
 
   function reset() {
     setOrder("score");
@@ -229,29 +211,8 @@ export default function StatsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-7">
-          {METRICS.map(([k, label]) => {
-            const band = ranges[k];
-            return (
-              <div key={k}>
-                <p className="mb-1 text-[11px] text-muted-foreground">{t(`video.${label}`)}</p>
-                <Tip content={t("stats.bandTitle")}>
-                  <button
-                    type="button"
-                    onClick={() => cycleBand(k)}
-                    className={`w-full rounded-lg border px-2 py-1.5 text-xs transition-colors ${
-                      band
-                        ? "border-primary/50 bg-primary/10 font-semibold text-primary"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {band ? t(`stats.${band.label}`) : t("stats.unlimited")}
-                  </button>
-                </Tip>
-              </div>
-            );
-          })}
-        </div>
+        {/* 筛选面板（对齐 vocabili /stats，本页不加赞助墙） */}
+      <StatsFilter search={filterSearch} matched={data.count} onChange={setFilterSearch} />
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
           <span className="text-xs text-muted-foreground">
