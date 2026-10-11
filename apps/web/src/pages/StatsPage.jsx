@@ -2,11 +2,10 @@ import { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { api, fmt } from "../api.js";
 import { qk } from "../queryKeys.js";
 import { RankRow } from "../components/RankCard.jsx";
-import SelectField, { SelectItem } from "../components/ui/SelectField.jsx";
-import Tip from "../components/ui/Tip.jsx";
 import StatsFilter from "../components/StatsFilter.jsx";
 
 const METRICS = [
@@ -19,8 +18,9 @@ const METRICS = [
   ["share", "share"],
 ];
 
+// 排序字段（顺序对齐 vocabili /stats 的 S 数组）：
+// 7 个数值指标 + 发布时间 + 日刊上榜次数 + 周刊上榜次数
 const ORDER_LABELS = [
-  ["score", "byScore"],
   ["view", "byView"],
   ["favorite", "byFavorite"],
   ["coin", "byCoin"],
@@ -28,6 +28,9 @@ const ORDER_LABELS = [
   ["danmaku", "byDanmaku"],
   ["reply", "byReply"],
   ["share", "byShare"],
+  ["pubdate", "byPubdate"],
+  ["daily_count", "byDailyCount"],
+  ["weekly_count", "byWeeklyCount"],
 ];
 
 const PAGE_SIZE = 20;
@@ -35,7 +38,7 @@ const PAGE_SIZE = 20;
 export default function StatsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [order, setOrder] = useState("score");
+  const [order, setOrder] = useState("view"); // 默认按播放降序，对齐原站
   const [asc, setAsc] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [kwDraft, setKwDraft] = useState("");
@@ -132,33 +135,41 @@ export default function StatsPage() {
           <h2 className="text-base font-bold tracking-tight sm:text-xl">{t("stats.title")}</h2>
           <p className="mt-1 text-xs text-muted-foreground">{t("stats.desc", { n: data.count })}</p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <SelectField
-            value={order}
-            onValueChange={(v) => {
-              setOrder(v);
-              setPage(1);
-            }}
-            triggerClassName="h-9 rounded-lg border bg-card px-2 text-xs"
-          >
-            {ORDER_LABELS.map(([k, tKey]) => (
-              <SelectItem key={k} value={k}>
-                {t(`stats.${tKey}`)}
-              </SelectItem>
-            ))}
-          </SelectField>
-          <Tip content={asc ? t("stats.asc") : t("stats.desc_")}>
+        {/* 排序控件（对齐 vocabili /stats）：
+            原站是「一排 chip 直接选排序字段」+「右侧独立按钮切升降序」，
+            而不是一个把字段和方向挤在一起的下拉框。排序字段含 7 个数值指标、
+            发布时间、日刊上榜次数、周刊上榜次数（对齐原站顺序）。 */}
+        <div className="ml-auto flex flex-wrap items-center gap-1 rounded-xl bg-muted/50 p-1">
+          {ORDER_LABELS.map(([k, tKey]) => (
             <button
+              key={k}
               type="button"
               onClick={() => {
-                setAsc((a) => !a);
+                setOrder(k);
                 setPage(1);
               }}
-              className="h-9 rounded-lg border px-2.5 text-xs"
+              aria-pressed={order === k}
+              className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs font-medium transition lg:px-2.5 lg:text-sm ${
+                order === k
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              {asc ? t("stats.ascShort") : t("stats.descShort")}
+              {t(`stats.${tKey}`)}
             </button>
-          </Tip>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setAsc((a) => !a);
+              setPage(1);
+            }}
+            title={asc ? t("stats.asc") : t("stats.desc_")}
+            aria-label={asc ? t("stats.asc") : t("stats.desc_")}
+            className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg bg-background transition hover:bg-muted sm:h-9 sm:w-9"
+          >
+            {asc ? <ArrowDown className="h-4 w-4" aria-hidden="true" /> : <ArrowUp className="h-4 w-4" aria-hidden="true" />}
+          </button>
         </div>
       </div>
 

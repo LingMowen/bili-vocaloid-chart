@@ -1384,8 +1384,26 @@ app.get("/api/evostats", (req, res, next) => {
         items = items.filter((it) => (it[k] ?? 0) <= m);
       }
     }
-    const key = order === "score" ? "score" : METRICS.includes(order) ? order : "score";
-    items = items.slice().sort((a, b) => ((b[key] ?? 0) - (a[key] ?? 0)) * (asc ? -1 : 1));
+    // 排序字段（对齐参考站 vocabili /stats）：
+    //   7 个数值指标 + score + pubdate（发布时间）+ daily_count / weekly_count（上榜次数）
+    // 后三类不在 items 上，需要 boardRankStats 提供的上榜数据 / 条目自带的 pubdate。
+    const rankStats = order === "daily_count" || order === "weekly_count"
+      ? boardRankStats(["daily", "weekly"])
+      : null;
+    let sortVal = null;
+    if (order === "score") {
+      sortVal = (it) => it.score ?? 0;
+    } else if (order === "pubdate") {
+      sortVal = (it) => Number(it.pubdate) || 0;
+    } else if (order === "daily_count" || order === "weekly_count") {
+      const which = order === "daily_count" ? "daily" : "weekly";
+      sortVal = (it) => (rankStats.get(String(it.aid)) || { daily: { count: 0 }, weekly: { count: 0 } })[which].count;
+    } else if (METRICS.includes(order)) {
+      sortVal = (it) => it[order] ?? 0;
+    } else {
+      sortVal = (it) => it.score ?? 0;
+    }
+    items = items.slice().sort((a, b) => (sortVal(b) - sortVal(a)) * (asc ? -1 : 1));
     return res.json({
       ok: true,
       data: {
