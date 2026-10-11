@@ -39,14 +39,12 @@ bili-vocaloid-chart/
 │       └── .env                  # 环境变量（本地填写，见 .env.example；不入库）
 ├── docs/
 │   ├── 周虚拟歌姬中文曲排行榜规则.md   # 收录范围、评分公式、成就规则
-│   ├── 对接文档.md                    # 布局对接、增量口径、本地环境
 │   ├── API文档.md                     # 本站全部 HTTP API（榜单/歌曲/搜索/歌姬/进度/认证）
-│   ├── 第三方API.md                    # 外部接口（B 站 / eVocalRank / biliran / vocabili / AI 审核 / OAuth）
-│   ├── scoring/                       # 2026-10-05 计分规则改造（新公式 + 历史期补数）全套
-│   └── agents/                        # issue tracker / triage / 域文档布局约定
+│   └── 第三方API.md                    # 外部接口（B 站 / eVocalRank / biliran / vocabili / AI 审核 / OAuth）
 ```
 
-> 项目开发日志（`docs/开发日志.md`）是**开发过程记录，不入库**，只在本地保留。
+> 开发日志、变更史、云端部署运维手册、计分规则改造文档与项目记忆库（`docs/memory/`）
+> 均为**过程记录，不入库**，只在本地保留。
 
 > 只在本地保留、**不入库**的内容：开发日志 `docs/开发日志.md`；以及**已归档**到 `old-files/` 的历史资料 ——
 > 按用途分成 `reference/`（参考站页面 / 接口 / DOM 快照与拆解工作区）、`sessions/`（各会话开发记忆与导出）、
@@ -74,13 +72,10 @@ npm run dev          # 同时启动 api(1003) + web(1005)
 |---|---|
 | `npm run preflight` | 推送前自检：凭据是否泄进跟踪文件、禁入目录是否被跟踪、JS 语法、JSON 合法性 |
 | `npm run preflight:selftest` | 验证上面这道门禁**真的会拦**（用合成假凭据走完整链路） |
-| `npm run changelog` | 从 git 历史重新生成 `docs/变更史.md` |
 | `npm run hooks:check` | 检查门禁是否已装 |
 
 - commit 首行必须是 `<type>(<scope>): <摘要>`，正文必须有 `改动：` 和 `验证：` 两行
   （模板见 `.gitmessage`）；
-- 真实身份由 `.mailmap` + 仓库级 `git config` 保证，GitHub Contributors 图显示的是你本人；
-- 完整说明见 [`docs/对接文档.md` §0.7](docs/对接文档.md)。
 
 ## 功能测试
 
@@ -95,8 +90,7 @@ npm run dev          # 同时启动 api(1003) + web(1005)
 | `npm run verify` | `preflight` + `test:api`，推送前最省事的一条 |
 
 用例里的 aid / mid / 歌手 id 全部从 `/api/board/all` 现取，不写死——写死的 id 只能测出
-「那个 id 还在不在」，测不出「接口取不到数据了」。分页参数踩过的坑记在
-[`docs/对接文档.md` §0.8](docs/对接文档.md)。
+「那个 id 还在不在」，测不出「接口取不到数据了」。
 
 > 注意：**仓库里不包含任何真实凭据**：`.env.example` 中的 cookie、密钥、邮箱密码一律为空，
 > 这些值**需要你自己填写**。全部留空也能浏览公开榜单，但采集（B 站登录态）、AI 审核、
@@ -173,7 +167,7 @@ PUBLIC_ORIGINS=.ciallo.ltd,.trycloudflare.com
 - `GET /api/progress/stream` —— SSE 长连接
 - `GET /api/progress/history` —— 采集历史与审核状态
 
-细节见 [`docs/对接文档.md` §0.7](docs/对接文档.md)。
+
 
 ## 环境变量
 
@@ -223,7 +217,7 @@ cp .env.example .env     # 然后照模板里的注释把值填进去
   门番候补 / 门番（15 期内 10 期、30 期内 20 期前 20）、日刊门番候补 / 日刊门番。
   周刊榜只产出前四类，日刊榜只产出后两类。
 
-详细的窗口与基线口径见 [`docs/对接文档.md`](docs/对接文档.md) 第四节。
+
 
 ## API 概览
 
@@ -269,4 +263,4 @@ web (Vite) --/api--> Express
   历史缓存中仍存有早期宽松版本留下的、未真正判定的条目。
 - **每日快照存在断档**（如缺 08-20、08-21、08-29、09-07～09-11、09-18、09-19），
   断档期在历史回溯时被跳过，会使门番系成就的可判定期数少于理论值。
-- 项目根目录当前**不是 git 仓库**，`.gitignore` 尚未生效。（此条已过时：仓库已初始化并推送至 GitHub，见 `docs/对接文档.md` §0.7）
+- 项目根目录当前**不是 git 仓库**，`.gitignore` 尚未生效。（此条已过时：仓库已初始化并推送至 GitHub）

@@ -125,7 +125,7 @@ function GridCard({ item, rank, external, singerIds = {} }) {
   const ownerName = item.owner?.name || item.author || girls[0] || t("rank.virtualSinger");
   const ownerMid = item.owner?.mid || null;
   // 原站徽章是「累计上榜次数」（接口字段 count），本站后端目前只算了「连续在榜」
-  // （streak）——口径差异见 docs/对接文档.md；后端补上 count 后此处自动切过去。
+  // （streak）——后端补上 count 后此处自动切过去。
   const listedCount = item.count ?? item.streak ?? 0;
   return (
     <article className="group overflow-hidden rounded-2xl border bg-card transition-shadow hover:shadow-lg">

@@ -7,7 +7,7 @@
  *
  *   node scripts/preflight.js            完整检查
  *   node scripts/preflight.js --json     机器可读输出
- *   SKIP_PREFLIGHT=1 git push            紧急逃生口（会留下痕迹，见 docs/对接文档.md）
+ *   SKIP_PREFLIGHT=1 git push            紧急逃生口（会留下痕迹）
  *
  * 分级：
  *   BLOCK  —— 真实泄密 / 语法错 / 禁入目录被跟踪，直接失败

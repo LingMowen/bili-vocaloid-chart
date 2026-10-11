@@ -55,7 +55,7 @@ export function NewPill() {
 /**
  * 网格卡片底部操作行（原站 `action.play` / `action.history` / `action.calculator`）。
  * 原站第三格在未登录时是禁用的「登录后可使用计算器」；本站计算器不需要登录，
- * 因此改为可用入口（口径差异见 docs/对接文档.md）。
+ * 因此改为可用入口。
  */
 export function CardActions({ item }) {
   const { t } = useTranslation();
