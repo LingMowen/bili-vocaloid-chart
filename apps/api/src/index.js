@@ -81,6 +81,7 @@ function fail(res, status, message) {
   return res.status(status).json({ ok: false, message });
 }
 
+
 async function wrap(req, res, next, fn) {
   try {
     const result = await fn();
@@ -88,11 +89,49 @@ async function wrap(req, res, next, fn) {
       const code = result.code === -404 ? 404 : 502;
       return fail(res, code, result.message || "upstream error");
     }
-    res.json(result);
+    // 图片 URL 归一由全局 res.json 中间件处理（见上方 upgradeImageUrls）
   } catch (e) {
     next(e);
   }
 }
+
+// ---- 图片 URL 协议归一（全局出口）----
+//
+// 为什么包 res.json 而不是只在 wrap 里做：
+//   本文件有 22 处直接 res.json（榜单/统计/歌手/随机…），
+//   它们不走 wrap —— 只在 wrap 里兜底会漏掉这些端点。
+//   包住 res.json 是唯一能覆盖**所有**出口的做法。
+//
+// 为什么需要（2026-10-16 云端 Mixed Content 报错）：
+//   站点是 HTTPS，但库里 1286 条 owner.face + 989 条 staff.face 是 http
+//   （采集时只转了 pic）。浏览器会拦截这些图片。
+const IMAGE_KEYS = new Set(["pic", "face", "faceimg", "picture", "thumbnail", "cover"]);
+const { toHttps } = require("./imgUrl");
+
+/** 递归把图片字段的 http:// 升级为 https://（就地修改）。 */
+function upgradeImageUrls(v) {
+  if (v == null || typeof v !== "object") return;
+  if (Array.isArray(v)) {
+    for (const item of v) upgradeImageUrls(item);
+    return;
+  }
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val === "string" && IMAGE_KEYS.has(k)) {
+      v[k] = toHttps(val);
+    } else if (val && typeof val === "object") {
+      upgradeImageUrls(val);
+    }
+  }
+}
+
+app.use((req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = (body) => {
+    upgradeImageUrls(body);
+    return origJson(body);
+  };
+  next();
+});
 
 // /api/sync/* 由路由自带的 64mb 解析器处理，这里必须跳过：
 // 否则全局默认 100kb 上限会先把增量库请求判成 413，请求根本到不了路由。
@@ -1111,12 +1150,12 @@ app.get("/api/singers", (req, res, next) => {
 // 引擎卡片此前一律渲染成 lucide-music 占位图标，因为聚合时只带 id/name/count，
 // 没有 logo —— 前端 EntityCard 无 picture 就走占位分支。logo 来自 singers.json 的
 // engine_meta（构建时从官方 /v3/synthesizer/list 拉取）。
-app.get("/api/engines", (req, res) => {
-  const d = readCached("singers.json");
-  if (!d || !d.singers) return fail(res, 404, "singers 库尚未生成");
+// 引擎聚合：从 singers.json 的 singers[*].engines 去重汇总出每个合成引擎。
+// /api/engines（列表）与 /api/engine/:id（详情）共用，避免两份聚合逻辑漂移。
+function buildEngineMap(d) {
   const meta = d.engine_meta || {};
   const map = new Map();
-  for (const s of Object.values(d.singers)) {
+  for (const s of Object.values(d.singers || {})) {
     for (const e of s?.engines || []) {
       if (!e || e.id == null || !e.name) continue;
       const key = String(e.id);
@@ -1140,10 +1179,42 @@ app.get("/api/engines", (req, res) => {
       map.set(key, g);
     }
   }
-  const list = [...map.values()]
+  return map;
+}
+
+app.get("/api/engines", (req, res) => {
+  const d = readCached("singers.json");
+  if (!d || !d.singers) return fail(res, 404, "singers 库尚未生成");
+  const list = [...buildEngineMap(d).values()]
     .map((g) => ({ ...g, singers: g.singers.sort((a, b) => b.count - a.count) }))
     .sort((a, b) => b.count - a.count);
   return res.json({ ok: true, data: { list, generated_at: d.generated_at ?? null } });
+});
+// ---- 合成器（引擎）详情页后端 ----
+// 参考站有 /synthesizer/:id，本站此前缺失；现在补齐。数据源与 /api/engines 同源（singers.json
+// 本地聚合），无需实时 vocabili 调用（Services 只有 vocalist，没有 engine 实时接口）。
+// id 为官方 vocabili 合成器 id（数字）；也容错按 name 匹配（搜索页只拿到名字的场景）。
+app.get("/api/engine/:id", (req, res) => {
+  const d = readCached("singers.json");
+  if (!d || !d.singers) return fail(res, 404, "singers 库尚未生成");
+  const map = buildEngineMap(d);
+  const raw = String(req.params.id || "").trim();
+  let g = map.get(raw);
+  if (!g) {
+    const lower = raw.toLowerCase();
+    for (const v of map.values()) {
+      if (String(v.name || "").trim().toLowerCase() === lower) {
+        g = v;
+        break;
+      }
+    }
+  }
+  if (!g) return fail(res, 404, "engine not found");
+  const singers = g.singers.sort((a, b) => b.count - a.count);
+  return res.json({
+    ok: true,
+    data: { ...g, singers, generated_at: d.generated_at ?? null },
+  });
 });
 // ---- 「随机看看」分类随机（对齐参考站 17-random.html）----
 // 返回 { kind, url, name, extra?, picture? }：前端拿到 url 直接跳转，无需二次查询。
@@ -1202,12 +1273,10 @@ function randomEngine() {
   }
   const it = pickOne([...map.values()]);
   if (!it) return null;
-  // 本站暂无引擎详情页（参考站 /synthesizer/:id），跳到「搜索 → 引擎」分类并预填关键词。
-  // ⚠ 参数名必须是 keyword（SearchPage 只读 params.get("keyword")）且要带 type=engine，
-  // 旧代码写的是 `/search?q=…`（少了 keyword、也没带 type），前端收不到 → 白跳。
+  // 引擎详情页已上线（/engine/:id，对齐参考站 /synthesizer/:id），直接跳到详情页。
   return {
     kind: "engine",
-    url: `/search?keyword=${encodeURIComponent(it.name)}&type=engine`,
+    url: `/engine/${it.id}`,
     name: it.name,
     extra: it.count ? `${it.count} 首` : "",
   };

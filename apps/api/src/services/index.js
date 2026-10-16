@@ -1,4 +1,5 @@
 const collector = require("../collector");
+const { toHttps } = require("../imgUrl");
 const statHistory = require("../statHistory");
 const evoStats = require("../evoStats");
 const viewTimeline = require("../viewTimeline");
@@ -316,13 +317,13 @@ async function buildBoard(period, issue) {
       aid: it.aid,
       bvid: it.bvid || "",
       title: it.title || "",
-      pic: String(it.pic || "").replace(/^http:\/\//, "https://"),
+      pic: toHttps(it.pic),
       duration: it.duration || 0,
       pubdate: it.pubdate || 0,
       lang: it.lang || classifyLang(it.title || ""),
       tags: it.tags || [],
       girls: it.girls || [],
-      owner: it.owner || {},
+      owner: it.owner ? { ...it.owner, face: toHttps(it.owner.face) } : {},
       score,
       ...dstat,
       // 时间归属：用了源站采集数据时，记录源站对应期的采集区间与期号（仅周榜覆盖记录日期）

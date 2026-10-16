@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const config = require("./config");
 const bili = require("./bili");
 const score = require("./score");
+const { toHttps } = require("./imgUrl");
 const aiReview = require("./aiReview");
 const statHistory = require("./statHistory");
 const evocalrank = require("./evocalrank");
@@ -441,12 +442,12 @@ async function buildItem(client, sdk, aid, it) {
   const ownerMid = data.owner?.mid;
   const staff = (data.staff || [])
     .filter((s) => Number(s.mid) && Number(s.mid) !== Number(ownerMid))
-    .map((s) => ({ mid: s.mid, name: s.name || "", title: s.title || "", face: s.face || "" }));
+    .map((s) => ({ mid: s.mid, name: s.name || "", title: s.title || "", face: toHttps(s.face) }));
   return {
     aid: Number(aid),
     bvid: data.bvid || it.bvid || "",
     title,
-    pic: String(data.pic || it.pic || "").replace(/^http:\/\//, "https://"),
+    pic: toHttps(data.pic || it.pic),
     duration,
     pubdate: data.pubdate || it.pubdate || 0,
     lang: classifyLang(title),
@@ -456,7 +457,7 @@ async function buildItem(client, sdk, aid, it) {
     desc: (data.desc || "").slice(0, 1000), // 简介用于关联作品（系列/专辑/原曲）识别，截断控体积
     ...stat,
     staff,
-    owner: { mid: data.owner?.mid || 0, name: data.owner?.name || "", face: data.owner?.face || "" },
+    owner: { mid: data.owner?.mid || 0, name: data.owner?.name || "", face: toHttps(data.owner?.face) },
     ai_reviewed: false, // 待独立后台审核 worker 判定是否真实虚拟歌姬演唱（解耦：不阻塞采集）
   };
 }
